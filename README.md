@@ -33,8 +33,8 @@ The following steps sketch the procedure by which debates are simulated:
 2. Given the `tag cloud`, let 🤖 _generate_ a debate `topic` (e.g., a question).
 3. Given the `topic`, let 🤖 _generate_ a suitable `motion` (e.g., the central claim).
 4. Recursively generate an argument tree, starting with the `motion` as `target argument`:
-   a. Let 🤖 _identify_ the implicit `premises` of the `target argument`.
-   b. Let 🤖 _rank_ the implicit `premises` in terms of plausibility.
-   c. Let 🤖 _generate_ k `pros` for the most plausible `premise`.
-   d. Let 🤖 _generate_ k `cons` against the least plausible `premise`.
-   e. Add `pros` and `cons` to argument tree, and use each of these as new `target argument` that is argued for and against, unless max depth has been reached.
+   1. Let 🤖 _identify_ the implicit `premises` of the `target argument`.
+   2. Let 🤖 _rank_ the implicit `premises` in terms of plausibility.
+   3. Let 🤖 _generate_ k `pros` for the most plausible `premise`.
+   4. Let 🤖 _generate_ k `cons` against the least plausible `premise`.
+   5. Add `pros` and `cons` to argument tree, and use each of these as new `target argument` that is argued for and against, unless max depth has been reached.
