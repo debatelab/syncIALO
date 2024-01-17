@@ -1,0 +1,12 @@
+cff-version: 1.2.0
+title: >-
+  syncIALO: Synthetic drop-in replacements for KIALO debate
+  datasets
+message: >-
+  If you use this software, please cite it using the
+  metadata from this file.
+type: software
+authors:
+  - name: Logikon AI
+    website: 'https://logikon.ai'
+repository-code: 'https://github.com/logikon-ai/syncIALO'
