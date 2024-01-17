@@ -1,2 +1,35 @@
 # syncIALO
-Synthetic drop-in replacements for KIALO debate datasets
+
+### What is this?
+
+Synthetic drop-in replacements for _Kialo_ debate datasets as can be downloaded from the [kialo.com](https://kialo.com) debating website.
+
+### Why?
+
+The Kialo debates are a 👑 gold mine for NLP researchers, LLM developers and Critical Thinking scholars. Yet, the mine is ⛔️ barred (for them): Debate data downloaded or scraped from the website may not be used for research or commercial purposes in the absence of explicit permission or license agreement.
+
+That's why the `Logikon AI` team has been creating this synthetic debate corpus which may serve as a drop-in replacement for the original Kiala data.
+
+### Features
+
+- permissive CC license
+- reproducible and extendible
+- open source code basis
+- generated with open LLMs
+
+### Corpora
+
+
+### Simulation Design
+
+The following steps sketch the procedure by which debates are simulated:
+
+1. Determine the debate's `tag cloud` by randomly sampling 8 topic tags.
+2. Given the `tag cloud`, let 🤖 _generate_ a debate `topic` (e.g., a question).
+3. Given the `topic`, let 🤖 _generate_ a suitable `motion` (e.g., the central claim).
+4. Recursively generate an argument tree, starting with the `motion` as `target argument`:
+   a. Let 🤖 _identify_ the implicit `premises` of the `target argument`.
+   b. Let 🤖 _rank_ the implicit `premises` in terms of plausibility.
+   c. Let 🤖 _generate_ k `pros` for the most plausible `premise`.
+   d. Let 🤖 _generate_ k `cons` against the least plausible `premise`.
+   e. Add `pros` and `cons` to argument tree, and use each of these as new `target argument` that is argued for and against, unless max depth has been reached.
