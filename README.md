@@ -19,11 +19,11 @@ That's why the `Logikon AI` team has been creating this synthetic debate corpus 
 
 ### Corpora
 
-| 🤖LLM | #debates[^1] | #claims[^1] | Notebook | Contributed by |
+| LLM🤖 | #debates[^1] | #claims[^1] | Notebook | Contributed by |
 |---|---|---|---|---|
 |[SOLAR](https://huggingface.co/upstage/SOLAR-10.7B-Instruct-v1.0)🤗|1000-50-50|X-Y-Z|[link](src/solar-ipynb)|Logikon AI|
 
-[^1]: Per train - eval - test splits
+[^1]: Per train - eval - test split.
 
 ### Simulation Design
 
