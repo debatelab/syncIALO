@@ -21,7 +21,7 @@ That's why the `Logikon AI` team has been creating this synthetic debate corpus 
 
 | LLM | #debates[^1] | #claims[^1] | Notebook | Contributed by |
 |---|---|---|---|---|
-|🤗[SOLAR](https://huggingface.co/upstage/SOLAR-10.7B-Instruct-v1.0)|1000-50-50|X-Y-Z|[link](src/solar-ipynb)|Logikon AI|
+|[SOLAR](https://huggingface.co/upstage/SOLAR-10.7B-Instruct-v1.0)🤗|1000-50-50|X-Y-Z|[link](src/solar-ipynb)|Logikon AI|
 
 [^1]: Per train - eval - test splits
 
