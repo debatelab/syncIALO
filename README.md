@@ -6,7 +6,7 @@ Synthetic drop-in replacements for _Kialo_ debate datasets which can be download
 
 ### Why?
 
-The Kialo debates are a 👑 gold mine for NLP researchers, LLM developers and Critical Thinking scholars. Yet, the mine is ⛔️ barred (for them): Debate data downloaded or scraped from the website may not be used for research or commercial purposes in the absence of explicit permission or license agreement.
+The Kialo debates are a 👑 gold mine for NLP researchers, LLM developers and Critical Thinking scholars. Yet, the mine is legally ⛔️ barred (for them): Debate data downloaded or scraped from the website may not be used for research or commercial purposes in the absence of explicit permission or license agreement.
 
 That's why the `Logikon AI` team has been creating this synthetic debate corpus which may serve as a drop-in replacement for the original Kialo data.
 
