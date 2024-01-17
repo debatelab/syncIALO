@@ -31,7 +31,7 @@ The following steps sketch the procedure by which debates are simulated:
 
 1. Determine the debate's `tag cloud` by randomly sampling 8 topic tags.
 2. Given the `tag cloud`, let 🤖 _generate_ a debate `topic` (e.g., a question).
-3. Given the `topic`, let 🤖 _generate_ a suitable `motion` (e.g., the central claim).
+3. Given the `topic`, let 🤖 _generate_ a suitable `motion` (i.e., the central claim).
 4. Recursively generate an argument tree, starting with the `motion` as `target argument`:
    1. Let 🤖 _identify_ the implicit `premises` of the `target argument`.
    2. Let 🤖 _rank_ the implicit `premises` in terms of plausibility.
