@@ -1,4 +1,4 @@
-# syncIALO
+# syncIALO 🤖🗯️
 
 ### What is this?
 
