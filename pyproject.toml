@@ -24,7 +24,11 @@ classifiers = [
   "Programming Language :: Python :: Implementation :: CPython",
   "Programming Language :: Python :: Implementation :: PyPy",
 ]
-dependencies = []
+dependencies = [
+  "python-dotenv",
+  "langchain>=0.3,<0.4",
+  "langchain-huggingface>=0.1,<0.2",
+]
 
 [project.urls]
 Documentation = "https://github.com/unknown/syncialo#readme"

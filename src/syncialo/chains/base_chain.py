@@ -5,8 +5,9 @@ import abc
 from langchain_core.runnables import Runnable
 from langchain_core.language_models.llms import LLM
 
+
 class BaseChain(abc.ABC):
-    """Abstract Base Class for COT chain builders based on langchain"""
+    """Abstract Base Class for chain builders based on langchain"""
 
     @classmethod
     @abc.abstractmethod
