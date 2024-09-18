@@ -2,13 +2,13 @@
 
 ### What is this?
 
-Synthetic drop-in replacements for _Kialo_ debate datasets which can be downloaded from the [kialo.com](https://kialo.com) debating website.
+Synthetic drop-in replacements for _Kialo_ debate datasets from the [kialo.com](https://kialo.com) debating website.
 
 ### Why?
 
 The Kialo debates are a 👑 gold mine for NLP researchers, LLM developers and Critical Thinking scholars. Yet, the mine is legally ⛔️ barred (for them): Debate data downloaded or scraped from the website may not be used for research or commercial purposes in the absence of explicit permission or license agreement.
 
-That's why the `Logikon AI` team has been creating this synthetic debate corpus which may serve as a drop-in replacement for the original Kialo data.
+That's why the `DebateLab` team has been starting to create this synthetic debate corpus, which may serve as a drop-in replacement for the original Kialo data.
 
 ### Features
 
