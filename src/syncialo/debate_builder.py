@@ -4,14 +4,26 @@ import uuid
 
 from loguru import logger
 
-from queries import identify_premises, rank_by_plausibility, supporting_argument, attacking_argument, PRO, CON
+from syncialo.chains.argumentation import (
+    IdentifyPremisesChain,
+    RankPropsByPlausibilityChain,
+    GenSupportingArgumentChain,
+    GenAttackingArgumentChain
+)
+
 
 class DebateBuilder:
-    
+
     def __init__(self, tags_universal, tags_per_cluster, model):
         self.tags_universal = tags_universal
         self.tags_per_cluster = tags_per_cluster
         self.model = model
+
+        # build chains
+        self.identify_premises = IdentifyPremisesChain.build(model)
+        self.rank_by_plausibility = RankPropsByPlausibilityChain.build(model)
+        self.gen_supporting_argument = GenSupportingArgumentChain.build(model)
+        self.gen_attacking_argument = GenAttackingArgumentChain.build(model)
 
     @logger.catch
     async def build_subtree(
@@ -21,6 +33,7 @@ class DebateBuilder:
         tree: nx.DiGraph,
         degree_config: list,
         tags: list,
+        topic: str,
     ):
         """
         builds the subtree under node_id and adds it to tree
@@ -47,7 +60,7 @@ class DebateBuilder:
         # get premises
         if node_id != root_id:
 
-            _, parent_id, data = next(iter(tree.out_edges(node_id, data=True)),(None, None, None))
+            _, parent_id, data = next(iter(tree.out_edges(node_id, data=True)), (None, None, None))
             if parent_id is None:
                 raise ValueError("Node %s has no parent node." % node_id)
 
@@ -65,7 +78,8 @@ class DebateBuilder:
             premises = [tree.nodes[node_id]['claim']]
 
         if not premises:
-            return 
+            logger.warning(f"No premises found for node: {tree.nodes[node_id]['claim']}. Skip building subtree.")
+            return
 
         n_prem = len(premises)
 
@@ -155,7 +169,7 @@ class DebateBuilder:
         root_id = str(uuid.uuid4())
         tree.add_node(
             root_id,
-            claim = root_claim
+            claim=root_claim
         )
         
         await self.build_subtree(
@@ -164,23 +178,24 @@ class DebateBuilder:
             tree=tree,
             degree_config=degree_config,
             tags=tag_cluster,
+            topic=topic,
         )
         
         return tree
     
     
-def to_kialo(tree, topic = ""):
+def to_kialo(tree, topic=""):
 
     lines = []
     lines.append(f"Discussion Title: {topic}")
     lines.append("")
-    
-    def add_node(target, counter, val = None):
+
+    def add_node(target, counter, val=None):
 
         if val is None:
             sym = " "
         else:
-            sym = " PRO: " if val==PRO else " CON: "
+            sym = " PRO: " if val == PRO else " CON: "
 
         line = counter + sym + tree.nodes[target]["claim"]
         lines.append(line)
