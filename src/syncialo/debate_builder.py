@@ -6,15 +6,15 @@ import uuid
 from loguru import logger
 
 import datasets
-from langchain_core.runnables import Runnable, RunnableLambda, RunnablePassthrough, chain
 
 from syncialo.chains.argumentation import (
     IdentifyPremisesChain,
-    RankPropsByPlausibilityChain,
-    GenSupportingArgumentChain,
-    GenAttackingArgumentChain,
+    GenerateProAndConChain,
+    SelectMostSalientChain,
     Valences,
 )
+
+_ARGS_PER_PERSONA = 2
 
 
 class DebateBuilder:
@@ -26,34 +26,10 @@ class DebateBuilder:
 
         # build sub-chains
         self.identify_premises = IdentifyPremisesChain.build(model)
-        self.rank_by_plausibility = RankPropsByPlausibilityChain.build(model)
-        self.gen_supporting_argument = GenSupportingArgumentChain.build(model)
-        self.gen_attacking_argument = GenAttackingArgumentChain.build(model)
-
-        # Define a chain that generates one pro and one con argument, adopting a given assistant persona
-        self.chain_generate_pro_and_con = (
-            # 1. init and pre-processing
-            RunnablePassthrough()
-            .assign(
-                # resample tags for more diversity 
-                tags_pro=RunnableLambda(random.sample(self.tags_universal, k=self.tags_per_cluster)),
-                tags_con=RunnableLambda(random.sample(self.tags_universal, k=self.tags_per_cluster))
-            )
-            # 2. rank by plausibility
-            | RunnablePassthrough()
-            .assign(ranking=self.rank_by_plausibility)
-            # 3. generate one pro argument
-            | RunnablePassthrough()
-            .assign(new_pro=self.gen_supporting_argument)
-            # TODO: add peer-review and revise step for con
-            # 4. generate one con argument
-            | RunnablePassthrough()
-            .assign(new_con=self.gen_attacking_argument)
-            # TODO: add peer-review and revise step for con
-        )
+        self.chain_generate_pro_and_con = GenerateProAndConChain.build(model)
+        self.select_most_salient = SelectMostSalientChain.build(model)
 
         # download and init persona datasets
-
         ds = datasets.load_dataset("proj-persona/PersonaHub", "reasoning", split="train")
         self.ds_personas = ds.select_columns(["input persona"])
 
@@ -89,7 +65,7 @@ class DebateBuilder:
         if not degree:
             return
 
-        # get premises
+        # identify premises of target node (i.e., node_id)
         if node_id != root_id:
 
             _, parent_id, data = next(iter(tree.out_edges(node_id, data=True)), (None, None, None))
@@ -112,47 +88,61 @@ class DebateBuilder:
             logger.warning(f"No premises found for node: {tree.nodes[node_id]['claim']}. Skip building subtree.")
             return
 
-        n = degree  # number of pros, and cons to generate
-        personas = ["A farmer from Ohio."] * n  # TODO: sample from dataset
+        personas = ["A farmer from Ohio."] * degree  # TODO: sample from dataset
         batched_input = [
-            {"premises": premises, "tags": tags, "persona": persona}
+            {"premises": premises, "tags": tags, "persona": persona, "n": _ARGS_PER_PERSONA}
             for persona in personas
         ]
 
+        # generate 2*n*degree arguments
         generated_args = await self.chain_generate_pro_and_con.abatch(batched_input)
 
-        # create new nodes and edges
+        # select k most salient, mutually independent args
+        all_generated_pros = [arg["new_pro"] for arg in generated_args if arg["new_pro"]]
+        all_generated_cons = [arg["new_con"] for arg in generated_args if arg["new_con"]]
+
+        salient_pros = self.select_most_salient.ainvoke(
+            args=all_generated_pros,
+            conclusion=tree.nodes[node_id]['claim'],
+            valence=Valences.PRO,
+            k=degree,
+        )
+        salient_cons = self.select_most_salient.ainvoke(
+            args=all_generated_cons,
+            conclusion=tree.nodes[node_id]['claim'],
+            valence=Valences.CON,
+            k=degree,
+        )
+
+        # add new nodes and edges to tree
         con_ids = []
         pro_ids = []
-        for generated_arg in generated_args:
-            if generated_arg["new_pro"]:
-                new_pro = generated_arg["new_pro"]
-                uid = str(uuid.uuid4())
-                tree.add_node(
-                    uid,
-                    claim=new_pro["claim"],
-                    label=new_pro["label"],
-                )
-                tree.add_edge(
-                    uid,
-                    node_id,
-                    valence=Valences.PRO,
-                    target_idx=new_pro["target_idx"])
-                pro_ids.append(uid)
-            if generated_arg["new_con"]:
-                new_con = generated_arg["new_con"]
-                uid = str(uuid.uuid4())
-                tree.add_node(
-                    uid,
-                    claim=new_con["claim"],
-                    label=new_con["label"],
-                )
-                tree.add_edge(
-                    uid,
-                    node_id,
-                    valence=Valences.CON,
-                    target_idx=new_con["target_idx"])
-                con_ids.append(uid)
+        for new_pro in salient_pros:
+            uid = str(uuid.uuid4())
+            tree.add_node(
+                uid,
+                claim=new_pro["claim"],
+                label=new_pro["label"],
+            )
+            tree.add_edge(
+                uid,
+                node_id,
+                valence=Valences.PRO,
+                target_idx=new_pro["target_idx"])
+            pro_ids.append(uid)
+        for new_con in salient_cons:
+            uid = str(uuid.uuid4())
+            tree.add_node(
+                uid,
+                claim=new_con["claim"],
+                label=new_con["label"],
+            )
+            tree.add_edge(
+                uid,
+                node_id,
+                valence=Valences.CON,
+                target_idx=new_con["target_idx"])
+            con_ids.append(uid)
 
         # recursion
         for pro_id in pro_ids:
