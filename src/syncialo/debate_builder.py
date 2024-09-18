@@ -89,6 +89,7 @@ class DebateBuilder:
                 model=self.model,
                 premises=premises,
                 tags=tags,
+                persona=None,
                 decoder="beam",
                 n=2,
             )
@@ -100,16 +101,21 @@ class DebateBuilder:
 
         # generate and add pros
         pro_ids = []
+        # TODO: needs to be discussed
         target_idx = ranking[0]  # support most plausible
         pros = await supporting_argument(
             model=self.model,
             premises=premises,
             target_idx=target_idx,
             tags=random.sample(self.tags_universal, k=self.tags_per_cluster),  # resample tags for more diversity
+            persona=None,
             n=n,
             decoder="sample",
-            temperature=.6,    
+            temperature=.6,
         )
+
+        # TODO: add peer-review and revise step for pros 
+        # TODO: Check for duplicates in entire tree/DAG and match arguments
 
         for claim in pros:
             uid = str(uuid.uuid4())        
@@ -119,16 +125,21 @@ class DebateBuilder:
 
         # generate and add cons
         con_ids = []
-        target_idx = ranking[-1]  # attack most unplausible
+        # TODO: needs to be discussed
+        target_idx = ranking[-1]  # attack least plausible only
         cons = await attacking_argument(
             model=self.model,
             premises=premises,
             target_idx=target_idx,
             tags=random.sample(self.tags_universal, k=self.tags_per_cluster),  # resample tags for more diversity
+            persona=None,
             n=n,
             decoder="sample",
             temperature=.6,
         )
+
+        # TODO: add peer-review and revise step for cons 
+        # TODO: Check for duplicates in entire tree/DAG and match arguments
 
         for claim in cons:
             uid = str(uuid.uuid4())        
