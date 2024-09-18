@@ -26,6 +26,13 @@ class SuggestTopicsChain(BaseChainBuilder):
         "{taglist}\n"
         "Each topic you suggest should be tailored to these issues and specifically reflect "
         "at least two of the issues (but more is better).\n\n"
+        "TIP: You should think about the scope of the discussion that you want to have. Big, "
+        "sweeping questions are going to lead to larger and more complex discussions, at least "
+        "in general. By contrast, a debate that’s too narrow and specific may not give you "
+        "anything to say beyond a few shallow points! "
+        "Topics and theses need to be interesting to your intended audience – that usually "
+        "requires them to be reasonably challenging and topical questions, and largely rules "
+        "out personal dilemmas.\n\n"
         "Can you please state {n} different debating topics which touch upon the above issues "
         "and from which we choose the most suitable ones? Be creative!\n"
         "No explanation is needed, just the topics, please."
@@ -41,8 +48,6 @@ class SuggestTopicsChain(BaseChainBuilder):
         '```\n'
         'Just return the JSON code.\n'
     )
-
-    stop_words = ["</reasoning>", "\n###"]
 
     @classmethod
     def build(cls, llm: BaseChatModel) -> Runnable:
@@ -87,14 +92,18 @@ class SuggestMotionChain(BaseChainBuilder):
         "Task: Suggest a suitable motion for our debate.\n"
         "Our group is planning a debate about the topic:\n"
         "{topic}\n"
-        "The overarching issues of the debates are: {taglist}\n"
-        "Can you please state a precise and very concise motion, or central claim for our debate? Hints:\n"
+        "The overarching issues of the debate are: {taglist}\n"
+        "We now need to pick and shape a motion, which is the departure point for our entire "
+        "discussion. It’s important that the motion effectively communicates our intended "
+        "discussion to other participants.\n"
+        "Can you please state a precise and very concise motion, or central claim for our debate?\n"
+        "Hints:\n"
         "- The motion should take a clear and unequivocal stance.\n"
         "- The motion expresses the view of the 'pro'-side in the debate.\n"
         "- The motion itself does not contain any reasoning or justification.\n"
         "- The motion appeals to persons concerned about the overarching issues listed above.\n"
-        "- DON'T start with \"This house ...\".\n"
-        "- DON'T start with \"This debate ...\".\n"
+        "- DO NOT start with \"This house ...\".\n"
+        "- DO NOT start with \"This debate ...\".\n"
         "No explanation is needed, just the motion, please."
     )
 

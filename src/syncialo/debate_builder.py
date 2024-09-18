@@ -1,14 +1,19 @@
 import networkx as nx
+from operator import itemgetter
 import random
 import uuid
 
 from loguru import logger
 
+import datasets
+from langchain_core.runnables import Runnable, RunnableLambda, RunnablePassthrough, chain
+
 from syncialo.chains.argumentation import (
     IdentifyPremisesChain,
     RankPropsByPlausibilityChain,
     GenSupportingArgumentChain,
-    GenAttackingArgumentChain
+    GenAttackingArgumentChain,
+    Valences,
 )
 
 
@@ -24,6 +29,11 @@ class DebateBuilder:
         self.rank_by_plausibility = RankPropsByPlausibilityChain.build(model)
         self.gen_supporting_argument = GenSupportingArgumentChain.build(model)
         self.gen_attacking_argument = GenAttackingArgumentChain.build(model)
+
+        # download and init persona datasets
+
+        ds = datasets.load_dataset("proj-persona/PersonaHub", "reasoning", split="train")
+        self.ds_personas = ds.select_columns(["input persona"])
 
     @logger.catch
     async def build_subtree(
@@ -66,8 +76,7 @@ class DebateBuilder:
 
             premises = tree.nodes[node_id].get('premises')
             if premises is None:
-                premises = await identify_premises(
-                    model=self.model,
+                premises = await self.identify_premises.ainvoke(
                     argument=tree.nodes[node_id]['claim'],
                     conclusion=tree.nodes[parent_id]['claim'],
                     valence=data['valence'],
@@ -81,70 +90,147 @@ class DebateBuilder:
             logger.warning(f"No premises found for node: {tree.nodes[node_id]['claim']}. Skip building subtree.")
             return
 
-        n_prem = len(premises)
+        n = degree  # number of pros, and cons to generate
+        personas = ["A farmer from Ohio."] * n  # TODO: sample from dataset
+        batched_input = [
+            {"premises": premises, "tags": tags, "persona": persona}
+            for persona in personas
+        ]
+
+        # Define a chain that generates one pro and one con argument, adopting a given assistant persona
+        chain_generate_pro_and_con = (
+            # 1. init and pre-processing
+            RunnablePassthrough()
+            .assign(
+                # resample tags for more diversity 
+                tags_pro=RunnableLambda(random.sample(self.tags_universal, k=self.tags_per_cluster)),
+                tags_con=RunnableLambda(random.sample(self.tags_universal, k=self.tags_per_cluster))
+            )
+            # 2. rank by plausibility
+            | RunnablePassthrough()
+            .assign(ranking=self.rank_by_plausibility)
+            # 3. generate one pro argument
+            | RunnablePassthrough()
+            .assign(new_pro=self.gen_supporting_argument)
+            # TODO: add peer-review and revise step for con
+            # 4. generate one con argument
+            | RunnablePassthrough()
+            .assign(new_con=self.gen_attacking_argument)
+            # TODO: add peer-review and revise step for con
+        )
+
+        generated_args = await chain_generate_pro_and_con.abatch(batched_input)
+
+        # create new nodes and edges
+        con_ids = []
+        pro_ids = []
+        for generated_arg in generated_args:
+            if generated_arg["new_pro"]:
+                new_pro = generated_arg["new_pro"]
+                uid = str(uuid.uuid4())
+                tree.add_node(
+                    uid,
+                    claim=new_pro["claim"],
+                    label=new_pro["label"],
+                )
+                tree.add_edge(
+                    uid,
+                    node_id,
+                    valence=Valences.PRO,
+                    target_idx=new_pro["target_idx"])
+                pro_ids.append(uid)
+            if generated_arg["new_con"]:
+                new_con = generated_arg["new_con"]
+                uid = str(uuid.uuid4())
+                tree.add_node(
+                    uid,
+                    claim=new_con["claim"],
+                    label=new_con["label"],
+                )
+                tree.add_edge(
+                    uid,
+                    node_id,
+                    valence=Valences.CON,
+                    target_idx=new_con["target_idx"])
+                con_ids.append(uid)
+
+        # recursion
+        for pro_id in pro_ids:
+            await self.build_subtree(
+                node_id=pro_id,
+                root_id=root_id,
+                tree=tree,
+                degree_config=degree_config,
+                tags=tags,
+            )
+
+        for con_id in con_ids:
+            await self.build_subtree(
+                node_id=con_id,
+                root_id=root_id,
+                tree=tree,
+                degree_config=degree_config,
+                tags=tags,
+            )
+
+
+
+
+        ## BREAK ##
+
+
+
+
+
+
+
 
         # rank by plausibility
         if n_prem > 1:
-            ranking = await rank_by_plausibility(
-                model=self.model,
+            ranking = await self.rank_by_plausibility.ainvoke(
                 premises=premises,
                 tags=tags,
                 persona=None,
-                decoder="beam",
-                n=2,
             )
-            ranking = ranking[0]
         else:
             ranking = list(range(n_prem))
 
-        n = degree  # number of pros and cons to generate
 
         # generate and add pros
         pro_ids = []
         # TODO: needs to be discussed
         target_idx = ranking[0]  # support most plausible
-        pros = await supporting_argument(
-            model=self.model,
+        pros = await self.gen_supporting_argument.ainvoke(
             premises=premises,
-            target_idx=target_idx,
+            ranking=ranking,
             tags=random.sample(self.tags_universal, k=self.tags_per_cluster),  # resample tags for more diversity
             persona=None,
-            n=n,
-            decoder="sample",
-            temperature=.6,
         )
 
-        # TODO: add peer-review and revise step for pros 
-        # TODO: Check for duplicates in entire tree/DAG and match arguments
-
         for claim in pros:
-            uid = str(uuid.uuid4())        
-            tree.add_node(uid, claim=claim)
-            tree.add_edge(uid, node_id, valence=PRO, target_idx=target_idx)
+            uid = str(uuid.uuid4())
+            tree.add_node(uid, claim=claim, target_proposition=premises[target_idx])
+            tree.add_edge(uid, node_id, valence=Valences.PRO, target_idx=target_idx)
             pro_ids.append(uid)
 
         # generate and add cons
         con_ids = []
         # TODO: needs to be discussed
         target_idx = ranking[-1]  # attack least plausible only
-        cons = await attacking_argument(
-            model=self.model,
+        cons = await self.gen_attacking_argument.ainvoke(
             premises=premises,
-            target_idx=target_idx,
+            ranking=ranking,
             tags=random.sample(self.tags_universal, k=self.tags_per_cluster),  # resample tags for more diversity
             persona=None,
-            n=n,
-            decoder="sample",
-            temperature=.6,
         )
 
-        # TODO: add peer-review and revise step for cons 
+        # TODO: add peer-review and revise step for cons
         # TODO: Check for duplicates in entire tree/DAG and match arguments
 
         for claim in cons:
-            uid = str(uuid.uuid4())        
-            tree.add_node(uid, claim=claim)
-            tree.add_edge(uid, node_id, valence=CON, target_idx=target_idx)
+            uid = str(uuid.uuid4())
+            tree.add_node(uid, claim=claim, target_proposition=premises[target_idx])
+            tree.add_edge(uid, node_id, valence=Valences.CON, target_idx=target_idx)
             con_ids.append(uid)
 
         # recursion
@@ -155,7 +241,7 @@ class DebateBuilder:
                 tree=tree,
                 degree_config=degree_config,
                 tags=tags,
-            )        
+            )
 
         for con_id in con_ids:
             await self.build_subtree(
@@ -164,9 +250,8 @@ class DebateBuilder:
                 tree=tree,
                 degree_config=degree_config,
                 tags=tags,
-            )        
-        
-        
+            )
+
     async def build_debate(
         self,
         root_claim: str,
@@ -174,7 +259,7 @@ class DebateBuilder:
         tag_cluster,
         degree_config,
     ) -> nx.DiGraph:
-                
+
         tree = nx.DiGraph()
 
         root_id = str(uuid.uuid4())
@@ -182,7 +267,7 @@ class DebateBuilder:
             root_id,
             claim=root_claim
         )
-        
+
         await self.build_subtree(
             node_id=root_id,
             root_id=root_id,
@@ -191,10 +276,13 @@ class DebateBuilder:
             tags=tag_cluster,
             topic=topic,
         )
-        
+
+        # TODO: Check for duplicate labels and revise/specify labels if necessary
+        # TODO: Check for duplicate arguments in entire tree/DAG and match arguments
+
         return tree
-    
-    
+
+
 def to_kialo(tree, topic=""):
 
     lines = []
@@ -206,7 +294,7 @@ def to_kialo(tree, topic=""):
         if val is None:
             sym = " "
         else:
-            sym = " PRO: " if val == PRO else " CON: "
+            sym = " PRO: " if val == Valences.PRO else " CON: "
 
         line = counter + sym + tree.nodes[target]["claim"]
         lines.append(line)
@@ -218,13 +306,11 @@ def to_kialo(tree, topic=""):
                 source,
                 counter+f"{i}.",
                 data['valence']
-            )    
+            )
 
-    root_id = next(n for n in tree.nodes if len(tree.out_edges(n))==0)
+    root_id = next(n for n in tree.nodes if len(tree.out_edges(n)) == 0)
     counter = "1."
 
     add_node(root_id, counter)
-    
+
     return lines
-    
-    

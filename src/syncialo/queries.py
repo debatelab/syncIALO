@@ -168,7 +168,7 @@ async def rank_by_plausibility(premises: list, tags:list = []):
     for i, premise in enumerate(premises):
         "P{i+1}. {premise}\n"
     """
-    Which of these premises are presumably the most plausible ones (i.e., the strongest, the most convincing ones)? Can you order the premises (labels) from very plausible to very unplausible?\n
+    Which of these premises are presumably the most plausible ones (i.e., the strongest, the most convincing ones)? Can you order the premises (labels) from very plausible to very implausible?\n
 
     ### Assistant:
     

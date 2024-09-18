@@ -25,6 +25,7 @@ classifiers = [
   "Programming Language :: Python :: Implementation :: PyPy",
 ]
 dependencies = [
+  "datasets",
   "langchain>=0.3,<0.4",
   "langchain-huggingface>=0.1,<0.2",
   "loguru",
