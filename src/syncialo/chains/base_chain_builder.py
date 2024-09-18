@@ -6,7 +6,7 @@ from langchain_core.runnables import Runnable
 from langchain_core.language_models.llms import LLM
 
 
-class BaseChain(abc.ABC):
+class BaseChainBuilder(abc.ABC):
     """Abstract Base Class for chain builders based on langchain"""
 
     @classmethod
