@@ -24,11 +24,33 @@ class DebateBuilder:
         self.tags_per_cluster = tags_per_cluster
         self.model = model
 
-        # build chains
+        # build sub-chains
         self.identify_premises = IdentifyPremisesChain.build(model)
         self.rank_by_plausibility = RankPropsByPlausibilityChain.build(model)
         self.gen_supporting_argument = GenSupportingArgumentChain.build(model)
         self.gen_attacking_argument = GenAttackingArgumentChain.build(model)
+
+        # Define a chain that generates one pro and one con argument, adopting a given assistant persona
+        self.chain_generate_pro_and_con = (
+            # 1. init and pre-processing
+            RunnablePassthrough()
+            .assign(
+                # resample tags for more diversity 
+                tags_pro=RunnableLambda(random.sample(self.tags_universal, k=self.tags_per_cluster)),
+                tags_con=RunnableLambda(random.sample(self.tags_universal, k=self.tags_per_cluster))
+            )
+            # 2. rank by plausibility
+            | RunnablePassthrough()
+            .assign(ranking=self.rank_by_plausibility)
+            # 3. generate one pro argument
+            | RunnablePassthrough()
+            .assign(new_pro=self.gen_supporting_argument)
+            # TODO: add peer-review and revise step for con
+            # 4. generate one con argument
+            | RunnablePassthrough()
+            .assign(new_con=self.gen_attacking_argument)
+            # TODO: add peer-review and revise step for con
+        )
 
         # download and init persona datasets
 
@@ -97,29 +119,7 @@ class DebateBuilder:
             for persona in personas
         ]
 
-        # Define a chain that generates one pro and one con argument, adopting a given assistant persona
-        chain_generate_pro_and_con = (
-            # 1. init and pre-processing
-            RunnablePassthrough()
-            .assign(
-                # resample tags for more diversity 
-                tags_pro=RunnableLambda(random.sample(self.tags_universal, k=self.tags_per_cluster)),
-                tags_con=RunnableLambda(random.sample(self.tags_universal, k=self.tags_per_cluster))
-            )
-            # 2. rank by plausibility
-            | RunnablePassthrough()
-            .assign(ranking=self.rank_by_plausibility)
-            # 3. generate one pro argument
-            | RunnablePassthrough()
-            .assign(new_pro=self.gen_supporting_argument)
-            # TODO: add peer-review and revise step for con
-            # 4. generate one con argument
-            | RunnablePassthrough()
-            .assign(new_con=self.gen_attacking_argument)
-            # TODO: add peer-review and revise step for con
-        )
-
-        generated_args = await chain_generate_pro_and_con.abatch(batched_input)
+        generated_args = await self.chain_generate_pro_and_con.abatch(batched_input)
 
         # create new nodes and edges
         con_ids = []
