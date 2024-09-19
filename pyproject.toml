@@ -28,6 +28,7 @@ dependencies = [
   "datasets",
   "langchain>=0.3,<0.4",
   "langchain-huggingface>=0.1,<0.2",
+  "langchain-openai>=0.2,<0.3",
   "loguru",
   "python-dotenv",
   "ujson",
@@ -70,7 +71,16 @@ dependencies = [
   "mypy>=1.0.0",
 ]
 [tool.hatch.envs.types.scripts]
-check = "mypy --install-types --non-interactive {args:src/syncialo tests}"
+check = "mypy {args:src/syncialo tests}"
+
+[tool.hatch.envs.style]
+dependencies = [
+  "black",
+  "ruff",
+]
+[tool.hatch.envs.style.scripts]
+check = "ruff check {args:src/syncialo tests} && black --check --diff --color {args:src/syncialo tests}"
+format = "black {args:src/syncialo tests}"
 
 [tool.coverage.run]
 source_pkgs = ["syncialo", "tests"]

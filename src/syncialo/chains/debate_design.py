@@ -1,11 +1,13 @@
 """Debate Design Chains"""
 
+
 from operator import itemgetter
 
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.output_parsers import StrOutputParser, SimpleJsonOutputParser
 from langchain_core.runnables import Runnable, RunnableLambda, RunnablePassthrough, chain
 from langchain_core.language_models.chat_models import BaseChatModel
+from loguru import logger
 
 from .base_chain_builder import BaseChainBuilder
 
@@ -122,6 +124,21 @@ class SuggestMotionChain(BaseChainBuilder):
         "Just return the JSON code."
     )
 
+    # postprocessing methods
+    @staticmethod
+    def check_json_format(formatted_motion) -> dict:
+        if not isinstance(formatted_motion, dict):
+            logger.warning("Motion must be a json dict.")
+            revised_motion = {"motion": str(formatted_motion)}
+            logger.info(f"Reformatted motion: {revised_motion}")
+            return revised_motion
+        elif "motion" not in formatted_motion:
+            logger.error("Missing 'motion' key in formatted motion.")
+            revised_motion = {"motion": str(formatted_motion)}
+            logger.info(f"Reformatted motion: {revised_motion}")
+            return revised_motion
+        return formatted_motion
+
     @classmethod
     def build(cls, llm: BaseChatModel) -> Runnable:
 
@@ -165,16 +182,19 @@ class SuggestMotionChain(BaseChainBuilder):
 
         @chain
         def revise_if_necessary(input_: dict) -> Runnable:
-            motion = input_["motion"]
+            motion = input_["motion"]["motion"]
             if motion.startswith("This house") or motion.startswith("This debate"):
-                return chain_revise | chain_format
+                return chain_revise | chain_format | RunnableLambda(cls.check_json_format)
             else:
                 return RunnablePassthrough() | itemgetter("motion")
 
         full_chain = (
-            RunnablePassthrough()
-            .assign(taglist=(itemgetter("tags") | RunnableLambda(lambda x: ' - '.join(x))))
-            .assign(motion=(chain_draft | chain_format))
+            RunnablePassthrough().assign(
+                taglist=(itemgetter("tags") | RunnableLambda(lambda x: ' - '.join(x)))
+            )
+            | RunnablePassthrough.assign(
+                motion=(chain_draft | chain_format | RunnableLambda(cls.check_json_format))
+            )
             | revise_if_necessary
         )
 
