@@ -21,13 +21,15 @@ That's why the `DebateLab` team has been starting to create this synthetic debat
 
 | LLM🤖 | #debates[^1] | #claims[^1] | Notebook | Contributed by |
 |---|---|---|---|---|
-|[SOLAR](https://huggingface.co/upstage/SOLAR-10.7B-Instruct-v1.0)🤗|1000/50/50|~583k/~29k/~29k|[link](src/solar-ipynb)|Logikon AI|
+|NN|x/y/z|~xk/~yk/zk|[link](src/...)|DebateLab|
 
 [^1]: Per train - eval - test split.
 
 ### Simulation Design
 
 The following steps sketch the procedure by which debates are simulated:
+
+__Needs to be updated!__
 
 1. Determine the debate's `tag cloud` by randomly sampling 8 topic tags.
 2. Given the `tag cloud`, let 🤖 _generate_ a debate `topic` (e.g., a question).
