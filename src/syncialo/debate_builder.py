@@ -250,7 +250,7 @@ def to_kialo(tree, topic=""):
             add_node(
                 source,
                 counter+f"{i}.",
-                data['valence']
+                data["valence"].value
             )
 
     root_id = next(n for n in tree.nodes if len(tree.out_edges(n)) == 0)
