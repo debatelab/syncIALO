@@ -7,6 +7,6 @@ message: >-
   metadata from this file.
 type: dataset
 authors:
-  - name: Logikon AI
-    website: 'https://logikon.ai'
-repository-code: 'https://github.com/logikon-ai/syncIALO'
+  - name: Gregor Betz
+    website: 'https://gregorbetz.de'
+repository-code: 'https://github.com/debatelab/syncIALO'
