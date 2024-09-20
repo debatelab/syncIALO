@@ -1,6 +1,6 @@
 # SPDX-FileCopyrightText: 2023-present Gregor Betz
 #
-# SPDX-License-Identifier: AGPL-4.0
+# SPDX-License-Identifier: CC-BY-SA-4.0
 __version__ = "0.0.2"
 __logo__ = """
 ███████╗██╗   ██╗███╗   ██╗ ██████╗██╗ █████╗ ██╗      ██████╗
