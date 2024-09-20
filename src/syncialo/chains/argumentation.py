@@ -96,102 +96,150 @@ class IdentifyPremisesChain(BaseChainBuilder):
 
     # TODO: 👔 Add step that checks and discards any "global balancing" premises
 
-    _prompt_explicate_prems = (
-        "Task: Identify premises of an argument.\n"
-        "Read the following background information carefully before answering!\n"
-        "/// background_information\n"
-    ) + _ARGUMENT_BASIC_INFO + (
-        "\n///\n"
-        "Now, a participant has previously maintained in a debate that:\n"
-        "[[A]] {argument}\n"
-        "which they've advanced as a reason {valence_text}:\n"
-        "[[B]] {conclusion}\n"
-        "Can you please identify the major explicit and implicit premises (up to 5) "
-        "of the argument [[A]]? State each premise as a single, concise sentence. "
-        "Don't include any conclusions."
-    )
+    # Chat prompts
 
-    _formatting_prompt = (
-        'Please format the concise premises you\'ve identified as follows:\n'
-        '```json\n'
-        '[\n'
-        '    {{"idx": 1, "premise": "<Insert first premise here.>"}},\n'
-        '    {{"idx": 2, "premise": "<Insert second premise here.>"}},\n'
-        '    ...\n'
-        ']\n'
-        '```\n'
-        'Just return the JSON code.\n'
-    )
+    _prompt_explicate_prems_msgs = [
+            ("system", _SYSTEM_PROMPT),
+            (
+                "user",
+                (
+                    "Task: Identify premises of an argument.\n"
+                    "Read the following background information carefully before answering!\n"
+                    "/// background_information\n"
+                ) + _ARGUMENT_BASIC_INFO + (
+                    "\n///\n"
+                    "Now, a participant has previously maintained in a debate that:\n"
+                    "[[A]] {argument}\n"
+                    "which they've advanced as a reason {valence_text}:\n"
+                    "[[B]] {conclusion}\n"
+                    "Can you please identify the major explicit and implicit premises (up to 5) "
+                    "of the argument [[A]]? State each premise as a single, concise sentence. "
+                    "Don't include any conclusions."
+                )
+            )
+        ]
+
+    _formatting_prompt_msgs = [
+            ("system", _SYSTEM_PROMPT),
+            ("user", "Can you please identify the premises of the previously discussed argument?"),
+            ("assistant", "{premises}"),
+            (
+                "user",
+                (
+                    'Please format the concise premises you\'ve identified as follows:\n'
+                    '```json\n'
+                    '[\n'
+                    '    {{"idx": 1, "premise": "<Insert first premise here.>"}},\n'
+                    '    {{"idx": 2, "premise": "<Insert second premise here.>"}},\n'
+                    '    ...\n'
+                    ']\n'
+                    '```\n'
+                    'Just return the JSON code.\n'
+                )
+            )
+        ]
+
+    # Preprocessing methods
+
+    pass
+
+    # Postprocessing methods
+
+    @staticmethod
+    def postprocess_premises(input_: list) -> list:
+        return [record["premise"] for record in input_ if "premise" in record]
+
+    # Chain builder
 
     @classmethod
     def build(cls, llm: BaseChatModel) -> Runnable:
-
-        # step 1: identify premises
-        prompt_template_explicate_prems = ChatPromptTemplate.from_messages([
-            ("system", _SYSTEM_PROMPT),
-            ("user", cls._prompt_explicate_prems)
-        ])
 
         chain_explicate_prems = (
             RunnablePassthrough().assign(
                 valence_text=(itemgetter("valence") | RunnableLambda(lambda x: str(x.value)))
             )
-            | prompt_template_explicate_prems
+            | ChatPromptTemplate.from_messages(cls._prompt_explicate_prems_msgs)
             | llm.bind(max_tokens=512)
             | StrOutputParser()
         )
 
-        # step 2: format premises
-        prompt_template_format = ChatPromptTemplate.from_messages([
-            ("system", _SYSTEM_PROMPT),
-            ("user", "Can you please identify the premises of the previously discussed argument?"),
-            ("assistant", "{premises}"),
-            ("user", cls._formatting_prompt)
-        ])
-
-        compound_chain = (
-            {"premises": chain_explicate_prems}
-            | prompt_template_format
+        chain_format = (
+            ChatPromptTemplate.from_messages(cls._formatting_prompt_msgs)
             | llm.bind(max_tokens=512, temperature=0)
             | SimpleJsonOutputParser()
-            | RunnableLambda(lambda x: [record["premise"] for record in x if "premise" in record])
+            | RunnableLambda(cls.postprocess_premises)
         )
 
-        return compound_chain
+        main_chain = (
+            {"premises": chain_explicate_prems}
+            | chain_format
+        )
+
+        return main_chain
 
 
 class RankPropsByPlausibilityChain(BaseChainBuilder):
 
-    _assess_prompt = (
-        "Task: Rank the premises in an argument according to plausibility\n"
-        "Domain: {taglist}\n"
-        "Read the following background information carefully before answering!\n"
-        "/// background_information\n"
-        ) + _ARGUMENT_BASIC_INFO + (
-        "\n///\n"
-        "Now, an opponent has previously maintained in a debate that:\n\n"
-        "{proplist}\n\n"
-        "How plausible and convincing are these propositions? More specifically: "
-        "Provide, for each proposition, a brief plausibility assessment (in a single "
-        "sentence) and rate its plausibility on a qualitative scale from highly-plausible to "
-        "most-implausible."
-    )
+    # Chat prompts
 
-    _rank_prompt = (
-        "Thanks for this! Now, please use your assessment to compare and order the propositions "
-        "in terms of plausibility. Rigourously format your plausibility ranking, beginning with the most "
-        "plausible proposition, as follows:\n"
-        '```json\n'
-        '[\n'
-        '    {{"proposition": "<Insert most plausible proposition here.>", '
-        '"prop_label": "<Label of this proposition>"}},\n'
-        '    {{"proposition": "<Insert second most plausible proposition here.>", '
-        '"prop_label": "<Label of this proposition>"}},\n'
-        '    ...\n'
-        ']\n'
-        '```\n'
-        'No comments or explanations. Just return the valid JSON code.\n'
-    )
+    _assess_prompt_msgs = [
+            ("system", _SYSTEM_PROMPT_PERSONA),
+            (
+                "user",
+                (
+                    "Task: Rank the premises in an argument according to plausibility\n"
+                    "Domain: {taglist}\n"
+                    "Read the following background information carefully before answering!\n"
+                    "/// background_information\n"
+                    ) + _ARGUMENT_BASIC_INFO + (
+                    "\n///\n"
+                    "Now, an opponent has previously maintained in a debate that:\n\n"
+                    "{proplist}\n\n"
+                    "How plausible and convincing are these propositions? More specifically: "
+                    "Provide, for each proposition, a brief plausibility assessment (in a single "
+                    "sentence) and rate its plausibility on a qualitative scale from highly-plausible to "
+                    "most-implausible."
+                )
+            )
+        ]
+
+    _rank_prompt_msgs = [
+            ("system", _SYSTEM_PROMPT),
+            ("user", "Can you please assess the plausibility of the following propositions?\n {proplist}"),
+            ("assistant", "{assessment}"),
+            (
+                "user",
+                (
+                    "Thanks for this! Now, please use your assessment to compare and order the propositions "
+                    "in terms of plausibility. Rigourously format your plausibility ranking, beginning with the most "
+                    "plausible proposition, as follows:\n"
+                    '```json\n'
+                    '[\n'
+                    '    {{"proposition": "<Insert most plausible proposition here.>", '
+                    '"prop_label": "<Label of this proposition>"}},\n'
+                    '    {{"proposition": "<Insert second most plausible proposition here.>", '
+                    '"prop_label": "<Label of this proposition>"}},\n'
+                    '    ...\n'
+                    ']\n'
+                    '```\n'
+                    'No comments or explanations. Just return the valid JSON code.\n'
+                )
+            )
+        ]
+
+    # Preprocessing methods
+
+    @staticmethod
+    def format_premises(premises: list) -> str:
+        formatted_premises = '\n'.join(
+            [
+                f"  (P{e+1}) {premise}"
+                for e, premise in enumerate(premises)
+            ]
+        )
+        return formatted_premises
+
+    # Postprocessing methods
 
     @staticmethod
     def postprocess_ranking(ranking: list) -> list:
@@ -206,46 +254,34 @@ class RankPropsByPlausibilityChain(BaseChainBuilder):
 
         return int_ranking
 
+    # Chain builder
+
     @classmethod
     def build(cls, llm: BaseChatModel) -> Runnable:
 
-        # step 1: assess premises
-        prompt_template_assess_prems = ChatPromptTemplate.from_messages([
-            ("system", _SYSTEM_PROMPT_PERSONA),
-            ("user", cls._assess_prompt)
-        ])
-
         chain_assess_prems = (
-            prompt_template_assess_prems
+            ChatPromptTemplate.from_messages(cls._assess_prompt_msgs)
             | llm.bind(max_tokens=512)
             | StrOutputParser()
         )
 
-        # step 2: rank premises
-        prompt_template_rank = ChatPromptTemplate.from_messages([
-            ("system", _SYSTEM_PROMPT),
-            ("user", "Can you please assess the plausibility of the following propositions?\n {proplist}"),
-            ("assistant", "{assessment}"),
-            ("user", cls._rank_prompt)
-        ])
-
-        # step 3: postprocess
-
-        compound_chain = (
-            RunnablePassthrough()
-            .assign(taglist=(itemgetter("tags") | RunnableLambda(lambda x: ' - '.join(x))))
-            .assign(proplist=(
-                itemgetter("premises")
-                | RunnableLambda(lambda x: '\n'.join([f"Label [P{e+1}]: {p}" for e, p in enumerate(x)]))
-            ))
-            | RunnablePassthrough().assign(assessment=chain_assess_prems)
-            | prompt_template_rank
+        chain_rank = (
+            ChatPromptTemplate.from_messages(cls._rank_prompt_msgs)
             | llm.bind(max_tokens=512, temperature=0)
             | SimpleJsonOutputParser()
             | RunnableLambda(cls.postprocess_ranking)
         )
 
-        return compound_chain
+        main_chain = (
+            RunnablePassthrough().assign(
+                taglist=(itemgetter("tags") | RunnableLambda(lambda x: ' - '.join(x))),
+                proplist=(itemgetter("premises") | RunnableLambda(cls.format_premises))
+            )
+            | RunnablePassthrough().assign(assessment=chain_assess_prems)
+            | chain_rank
+        )
+
+        return main_chain
 
 
 class AbstractGenArgumentChain(BaseChainBuilder):
@@ -289,8 +325,6 @@ class AbstractGenArgumentChain(BaseChainBuilder):
 
     pass
 
-
-# TODO: 💄👔 Follow code style and structure conventions exhibited by the following class in the other classes
 
 class GenSupportingArgumentChain(AbstractGenArgumentChain):
     """
