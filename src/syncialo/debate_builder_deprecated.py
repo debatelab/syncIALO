@@ -1,3 +1,5 @@
+# DEPRECATED
+
 import networkx as nx
 import random
 import uuid
