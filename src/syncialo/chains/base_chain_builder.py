@@ -3,7 +3,7 @@
 import abc
 
 from langchain_core.runnables import Runnable
-from langchain_core.language_models.llms import LLM
+from langchain_core.language_models.chat_models import BaseChatModel
 
 
 class BaseChainBuilder(abc.ABC):
@@ -11,7 +11,7 @@ class BaseChainBuilder(abc.ABC):
 
     @classmethod
     @abc.abstractmethod
-    def build(cls, llm: LLM) -> Runnable:
+    def build(cls, llm: BaseChatModel) -> Runnable:
         """Build chain
 
         Returns:
