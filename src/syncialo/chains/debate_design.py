@@ -77,7 +77,7 @@ class SuggestTopicsChain(BaseChainBuilder):
                 "n": itemgetter("debates_per_tag_cluster"),
             }
             | ChatPromptTemplate.from_messages(cls._instruction_prompt_msgs)
-            | llm.bind(max_tokens=512)
+            | llm.bind(max_tokens=512, temperature=0.6)
             | StrOutputParser()
         )
 
@@ -153,6 +153,16 @@ class SuggestMotionChain(BaseChainBuilder):
         )
     ]
 
+    _titlegen_prompt_msgs = [
+        ("system", _SYSTEM_PROMPT),
+        (
+            "user",
+            "Can you please suggest a catchy title (2-4 words) for "
+            "the central motion '{motion}' of our debate? In your answer, "
+            "just provide the tiotle, no comments or explanations."
+        ),
+    ]
+
     # Postprocessing methods
 
     @staticmethod
@@ -174,13 +184,13 @@ class SuggestMotionChain(BaseChainBuilder):
 
         chain_draft = (
             ChatPromptTemplate.from_messages(cls._instruction_prompt_msgs)
-            | llm.bind(max_tokens=128)
+            | llm.bind(max_tokens=128, temperature=0.6)
             | StrOutputParser()
         )
 
         chain_revise = (
             ChatPromptTemplate.from_messages(cls._instruction_prompt_msgs + cls._reformulation_prompt_msgs)
-            | llm.bind(max_tokens=128)
+            | llm.bind(max_tokens=128, temperature=0.3)
             | StrOutputParser()
         )
 
@@ -188,6 +198,12 @@ class SuggestMotionChain(BaseChainBuilder):
             ChatPromptTemplate.from_messages(cls._formatting_prompt_msgs)
             | llm.bind(max_tokens=128, temperature=0)
             | SimpleJsonOutputParser()
+        )
+
+        chain_titlegen = (
+            ChatPromptTemplate.from_messages(cls._titlegen_prompt_msgs)
+            | llm.bind(max_tokens=128, temperature=0.3)
+            | StrOutputParser()
         )
 
         @chain
@@ -209,6 +225,9 @@ class SuggestMotionChain(BaseChainBuilder):
                 motion=(itemgetter("motion") | chain_format | RunnableLambda(cls.check_json_format))
             )
             | revise_if_necessary
+            | RunnablePassthrough.assign(
+                title=(itemgetter("motion") | chain_titlegen)
+            )
         )
 
         return main_chain

@@ -159,7 +159,7 @@ class IdentifyPremisesChain(BaseChainBuilder):
                 valence_text=(itemgetter("valence") | RunnableLambda(lambda x: str(x.value)))
             )
             | ChatPromptTemplate.from_messages(cls._prompt_explicate_prems_msgs)
-            | llm.bind(max_tokens=512)
+            | llm.bind(max_tokens=512, temperature=0.3)
             | StrOutputParser()
         )
 
@@ -261,7 +261,7 @@ class RankPropsByPlausibilityChain(BaseChainBuilder):
 
         chain_assess_prems = (
             ChatPromptTemplate.from_messages(cls._assess_prompt_msgs)
-            | llm.bind(max_tokens=512)
+            | llm.bind(max_tokens=512, temperature=0.3)
             | StrOutputParser()
         )
 
@@ -402,7 +402,7 @@ class GenSupportingArgumentChain(AbstractGenArgumentChain):
 
         subchain_draft = (
             ChatPromptTemplate.from_messages(cls._instruction_prompt_msgs)
-            | llm.bind(max_tokens=1024, temperature=0.4)
+            | llm.bind(max_tokens=1024, temperature=0.7)
             | StrOutputParser()
         )
 
@@ -512,7 +512,7 @@ class GenAttackingArgumentChain(AbstractGenArgumentChain):
 
         subchain_draft = (
             ChatPromptTemplate.from_messages(cls._instruction_prompt_msgs)
-            | llm.bind(max_tokens=512, temperature=0.4)
+            | llm.bind(max_tokens=512, temperature=0.7)
             | StrOutputParser()
         )
 
