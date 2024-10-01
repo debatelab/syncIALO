@@ -40,3 +40,12 @@ __Needs to be updated!__
    3. Let 🤖 _generate_ k `pros` for the most plausible `premise`.
    4. Let 🤖 _generate_ k `cons` against the least plausible `premise`.
    5. Add `pros` and `cons` to argument tree, and use each of these as new `target argument` that is argued for and against, unless max depth has been reached.
+
+### Install Airflow
+
+```bash
+hatch env create airflow
+hatch shell airflow
+pip install "apache-airflow==2.10.2" --constraint "https://raw.githubusercontent.com/apache/airflow/constraints-2.10.2/constraints-3.8.txt"
+exit
+```
