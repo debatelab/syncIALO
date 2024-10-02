@@ -212,8 +212,15 @@ def add_all_motions(**kwargs):
 
 def get_missing_debates(**kwargs):
     """
-    returns a list of debate ids that are missing in the corpus
+    returns a list of debate paths that are missing in the corpus
     """
+    for split in ["train", "eval", "test"]:
+        for debate_path in (kwargs["path"] / split).iterdir():
+            if not debate_path.is_dir():
+                continue
+            config_path: Path = debate_path / "config.yaml"
+            if config_path.exists() and not any(debate_path.glob("*.json")):
+                yield debate_path
 
 
 @task
@@ -226,24 +233,27 @@ async def generate_single_debate(**kwargs):
 @task
 def save_debates_in_corpus(debates, **kwargs):
     """
-    adds a debate to the corpus
+    adds and saves given debates to the corpus
     """
 
 
 async def add_all_debates(**kwargs):
     """
-    adds debates to the corpus
+    adds all debates to the corpus
     """
     while True:
-        batch_ids = get_missing_debates(**kwargs)[:_BATCH_SIZE]
-        if not batch_ids:
+        debate_paths: list[Path] = [next(get_missing_debates(**kwargs), None) for _ in range(_BATCH_SIZE)]
+        debate_paths = [p for p in debate_paths if p]
+        logger.debug(f"Next {len(debate_paths)} missing debates: {debate_paths}")
+        if not debate_paths:
             break
-        coros = [generate_single_debate(id) for id in batch_ids]
+        coros = [generate_single_debate(debate_path, **kwargs) for debate_path in debate_paths]
         save_debates_in_corpus(
-            ids=batch_ids,
+            debate_paths=debate_paths,
             debates=await asyncio.gather(*coros),
             **kwargs
         )
+
 
 @task
 def perform_sanity_checks(**kwargs):
