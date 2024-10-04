@@ -199,18 +199,25 @@ class DebateBuilder:
 
     async def build_debate(
         self,
-        root_claim: str,
+        root_claim: str | dict[str, str],
         topic: str,
         tag_cluster,
         degree_config,
     ) -> nx.DiGraph:
+
+        if isinstance(root_claim, dict):
+            root_claim = root_claim["claim"]
+            root_label = root_claim["label"]
+        else:
+            root_label = ""
 
         tree = nx.DiGraph()
 
         root_id = str(uuid.uuid4())
         tree.add_node(
             root_id,
-            claim=root_claim
+            claim=root_claim,
+            label=root_label,
         )
 
         await self.build_subtree(
