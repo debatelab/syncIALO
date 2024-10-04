@@ -103,7 +103,7 @@ class DebateBuilder:
         degree = degree_config[depth]  # number if pros / cons to generate
         logger.debug(f"Processing at depth {depth}")
         logger.debug(f"Degree = {degree}")
-        logger.debug(f"Reason claim {tree.nodes[node_id]['claim']}")
+        logger.debug(f"Target reason claim: {tree.nodes[node_id]['claim'][:40]}")
         if not degree:
             return
 
