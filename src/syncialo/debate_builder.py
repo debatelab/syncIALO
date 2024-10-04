@@ -11,7 +11,7 @@ from syncialo.chains.argumentation import (
     GenerateProAndConChain,
     SelectMostSalientChain,
     ArgumentModel,
-    Valences,
+    Valence,
 )
 
 _ARGS_PER_PERSONA = 2
@@ -70,7 +70,7 @@ class DebateBuilder:
             premises = await self.chain_identify_premises.ainvoke({
                 "argument": tree.nodes[node_id]['claim'],
                 "conclusion": tree.nodes[parent_id]['claim'],
-                "valence": data['valence'],
+                "valence": Valence(data['valence']),  # valences are stored as str in networkx graph
             })
             # cache premises as node attribute in tree
             tree.nodes[node_id]['premises'] = premises
@@ -136,13 +136,13 @@ class DebateBuilder:
         salient_pros: list[ArgumentModel] = await self.chain_select_most_salient.ainvoke({
             "args": all_generated_pros,
             "conclusion": tree.nodes[node_id]['claim'],
-            "valence": Valences.PRO,
+            "valence": Valence.PRO,
             "k": degree,
         })
         salient_cons: list[ArgumentModel] = await self.chain_select_most_salient.ainvoke({
             "args": all_generated_cons,
             "conclusion": tree.nodes[node_id]['claim'],
-            "valence": Valences.CON,
+            "valence": Valence.CON,
             "k": degree,
         })
 
@@ -159,7 +159,7 @@ class DebateBuilder:
             tree.add_edge(
                 uid,
                 node_id,
-                valence=Valences.PRO,
+                valence=Valence.PRO.value,
                 target_idx=new_pro.target_idx)
             pro_ids.append(uid)
         for new_con in salient_cons:
@@ -172,7 +172,7 @@ class DebateBuilder:
             tree.add_edge(
                 uid,
                 node_id,
-                valence=Valences.CON,
+                valence=Valence.CON.value,
                 target_idx=new_con.target_idx)
             con_ids.append(uid)
 
@@ -199,16 +199,17 @@ class DebateBuilder:
 
     async def build_debate(
         self,
-        root_claim: str | dict[str, str],
+        motion: str | dict[str, str],
         topic: str,
         tag_cluster,
         degree_config,
     ) -> nx.DiGraph:
 
-        if isinstance(root_claim, dict):
-            root_claim = root_claim["claim"]
-            root_label = root_claim["label"]
+        if isinstance(motion, dict):
+            root_claim = motion["claim"]
+            root_label = motion["label"]
         else:
+            root_claim = motion
             root_label = ""
 
         tree = nx.DiGraph()
@@ -246,7 +247,7 @@ def to_kialo(tree, topic=""):
         if val is None:
             sym = " "
         else:
-            sym = " PRO: " if val == Valences.PRO else " CON: "
+            sym = " PRO: " if val == Valence.PRO else " CON: "
 
         line = counter + sym + tree.nodes[target]["claim"]
         lines.append(line)
