@@ -74,6 +74,8 @@ def check_kwargs(**kwargs):
         raise ValueError("output_dir is required")
     if "model_kwargs" not in kwargs:
         raise ValueError("model_kwargs is required")
+    if os.getenv("SYNCIALO_API_KEY") is None:
+        logger.warning("SYNCIALO_API_KEY is not set. Will try to access inference server with api key.")
 
 
 @task
@@ -127,7 +129,7 @@ def add_all_debate_configs(**kwargs):
                 motion={},
                 degree_config=degree_config,
             )
-            debate_path = kwargs["path"] / split.value / f"{debate_uid}.yaml"
+            debate_path = kwargs["path"] / split.value / f"{debate_uid}"
             config_path = debate_path / "config.yaml"
             if debate_path.exists():
                 if not config_path.exists():
@@ -138,6 +140,8 @@ def add_all_debate_configs(**kwargs):
                     logger.error(msg)
                     raise ValueError(msg)
                 continue
+            else:
+                debate_path.mkdir(parents=True)
             config_path.write_text(yaml.dump(debate_config.model_dump()))
 
 
@@ -158,23 +162,29 @@ def add_all_topics(**kwargs):
     test_tags = [tag.rstrip() for tag in test_tags]
     logger.debug(f"Read {len(test_tags)} test tags")
 
-    chat_model = ChatOpenAI(**kwargs["model_kwargs"])
+    model_kwargs = kwargs["model_kwargs"]
+    model_kwargs["api_key"] = os.getenv("SYNCIALO_API_KEY", "NONE")
+    chat_model = ChatOpenAI(**model_kwargs)
     suggest_topics_chain = SuggestTopicsChain.build(chat_model)
 
     def sample_tags(_split: SPLIT) -> list[str]:
         if _split == SPLIT.TRAIN:
-            tags = random.sample(universal_tags, tags_per_cluster)
-        if _split == SPLIT.EVAL:
+            tags = random.sample(universal_tags, k=tags_per_cluster)
+        elif _split == SPLIT.EVAL:
             k = tags_per_cluster // 2
-            tags = random.sample(eval_tags, k) + random.sample(universal_tags, tags_per_cluster - k)
-        if _split == SPLIT.TEST:
+            tags = random.sample(eval_tags, k=k) + random.sample(universal_tags, k=tags_per_cluster - k)
+        elif _split == SPLIT.TEST:
             k = tags_per_cluster // 2
-            tags = random.sample(test_tags, k) + random.sample(universal_tags, tags_per_cluster - k)
+            tags = random.sample(test_tags, k=k) + random.sample(universal_tags, k=tags_per_cluster - k)
         else:
             raise ValueError(f"Invalid split: {_split}")
-        return random.shuffle(tags)
+        random.shuffle(tags)
+        return tags
 
     for split in [SPLIT.TRAIN, SPLIT.EVAL, SPLIT.TEST]:
+        if not (kwargs["path"]/split.value).exists():
+            logger.info(f"Will not generate topics for split {split.value}.")
+            continue
         logger.info(f"Adding topics to debates in {split} split...")
         topic_suggestions = []
         for debate_path in (kwargs["path"] / split.value).iterdir():
@@ -184,7 +194,7 @@ def add_all_topics(**kwargs):
             if not config_path.exists():
                 logger.warning(f"Config file missing for {str(debate_path)}. Skipping this directory.")
                 continue
-            debate_config = DebateConfig(yaml.safe_load(config_path.read_text()))
+            debate_config = DebateConfig(**yaml.safe_load(config_path.read_text()))
             if debate_config.topic:
                 continue
             if not topic_suggestions:
@@ -203,10 +213,15 @@ def add_all_motions(**kwargs):
     """
     adds topics and motions to the corpus' debates
     """
-    chat_model = ChatOpenAI(**kwargs["model_kwargs"])
+    model_kwargs = kwargs["model_kwargs"]
+    model_kwargs["api_key"] = os.getenv("SYNCIALO_API_KEY", "NONE")
+    chat_model = ChatOpenAI(**model_kwargs)
     suggest_motion_chain = SuggestMotionChain.build(chat_model)
 
     for split in [SPLIT.TRAIN, SPLIT.EVAL, SPLIT.TEST]:
+        if not (kwargs["path"]/split.value).exists():
+            logger.info(f"Will not generate motions for split {split.value}.")
+            continue
         logger.info(f"Adding motions to debates in {split} split...")
         for debate_path in (kwargs["path"] / split.value).iterdir():
             if not debate_path.is_dir():
@@ -215,7 +230,7 @@ def add_all_motions(**kwargs):
             if not config_path.exists():
                 logger.warning(f"Config file missing for {str(debate_path)}. Skipping this directory.")
                 continue
-            debate_config = DebateConfig(yaml.safe_load(config_path.read_text()))
+            debate_config = DebateConfig(**yaml.safe_load(config_path.read_text()))
             if debate_config.motion:
                 logger.debug(f"Motion already exists for {str(debate_path)}. Skipping.")
                 continue
@@ -236,6 +251,9 @@ def get_missing_debates(**kwargs):
     yields debate paths in the corpus for which debates haven't been generated yet
     """
     for split in [SPLIT.TRAIN, SPLIT.EVAL, SPLIT.TEST]:
+        if not (kwargs["path"]/split.value).exists():
+            logger.info(f"Will not generate debates for split {split.value}.")
+            continue
         for debate_path in (kwargs["path"] / split.value).iterdir():
             if not debate_path.is_dir():
                 continue
@@ -250,16 +268,18 @@ async def generate_single_debate(debate_path: Path, **kwargs) -> nx.DiGraph:
     generates a debate
     """
     tags_universal = Path(kwargs["universal_tags_path"]).read_text().split("\n")
-    debate_config = DebateConfig(yaml.safe_load((debate_path / "config.yaml").read_text()))
+    debate_config = DebateConfig(**yaml.safe_load((debate_path / "config.yaml").read_text()))
 
-    chat_model = ChatOpenAI(**kwargs["model_kwargs"])
+    model_kwargs = kwargs["model_kwargs"]
+    model_kwargs["api_key"] = os.getenv("SYNCIALO_API_KEY", "NONE")
+    chat_model = ChatOpenAI(**model_kwargs)
     debateBuilder = DebateBuilder(
         model=chat_model,
         tags_universal=tags_universal,
         tags_per_cluster=kwargs["tags_per_cluster"],
     )
     built_debate: nx.DiGraph = await debateBuilder.build_debate(
-        root_claim=debate_config.motion,
+        motion=debate_config.motion,
         topic=debate_config.topic,
         tag_cluster=debate_config.tags,
         degree_config=debate_config.degree_config,
@@ -280,7 +300,7 @@ def save_debates_in_corpus(debate_paths: list[Path], debates: list[nx.DiGraph], 
         raise ValueError(msg)
 
     for debate_path, debate in zip(debate_paths, debates):
-        debate_config = DebateConfig(yaml.safe_load((debate_path / "config.yaml").read_text()))
+        debate_config = DebateConfig(**yaml.safe_load((debate_path / "config.yaml").read_text()))
         node_link_data = nx.node_link_data(debate)
         with open(debate_path / f"node_link_data-{debate_config.debate_uid}.json", "w") as f:
             ujson.dump(node_link_data, f)
@@ -314,6 +334,9 @@ def perform_sanity_checks(**kwargs):
     debates_counter = {SPLIT.TRAIN: 0, SPLIT.EVAL: 0, SPLIT.TEST: 0}
 
     for split in [SPLIT.TRAIN, SPLIT.EVAL, SPLIT.TEST]:
+        if not (kwargs["path"]/split.value).exists():
+            logger.debug(f"No split directory {split.value}.")
+            continue
         for debate_path in (kwargs["path"] / split.value).iterdir():
             if not debate_path.is_dir():
                 continue
@@ -323,7 +346,7 @@ def perform_sanity_checks(**kwargs):
                 logger.error(f"Config file missing for {str(debate_path)}.")
                 raise ValueError(f"Config file missing for {str(debate_path)}")
             try:
-                DebateConfig(yaml.safe_load(config_path.read_text()))
+                DebateConfig(**yaml.safe_load(config_path.read_text()))
             except Exception as e:
                 msg = f"Invalid config file for {str(debate_path)}: {str(e)}"
                 logger.error(msg)
@@ -339,12 +362,13 @@ def perform_sanity_checks(**kwargs):
                 logger.error(msg)
                 raise ValueError(msg)
             try:
-                node_link_data = ujson.load(json_files[0])
-                nx.DiGraph(node_link_data)
+                node_link_data = ujson.decode(json_files[0].read_text())
+                nx.node_link_graph(node_link_data)
             except Exception as e:
                 msg = f"Invalid debate json for {str(debate_path)}: {str(e)}"
                 logger.error(msg)
                 raise ValueError(msg)
+            logger.debug(f"✅ Checks passed: {str(debate_path)}")
 
             debates_counter[split] += 1
 
@@ -406,7 +430,6 @@ if __name__ == "__main__":
             model_kwargs={
                 "model": "tgi",
                 "base_url": "http://kriton.philosophie.kit.edu:8080/v1/",
-                "api_key": os.getenv("API_KEY", "no-key-required"),
             },
         )
     )
@@ -433,7 +456,6 @@ if __name__ == "__main__":
 #            model_kwargs={
 #                "model": "tgi",
 #                "base_url": "http://kriton.philosophie.kit.edu:8080/v1/",
-#                "api_key": os.getenv("API_KEY", "no-key-required"),
 #            },
 #        )
 #    )
