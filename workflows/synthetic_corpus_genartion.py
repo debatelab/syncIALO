@@ -6,13 +6,15 @@ import os
 from pathlib import Path
 import random
 import yaml
+import ujson
 
 from langchain_openai import ChatOpenAI
 from loguru import logger
+import networkx as nx
 from prefect import flow, task
 from pydantic import BaseModel
-
 from syncialo.chains.debate_design import SuggestMotionChain, SuggestTopicsChain
+from syncialo.debate_builder import DebateBuilder
 
 
 _BATCH_SIZE = 10
@@ -243,14 +245,30 @@ def get_missing_debates(**kwargs):
 
 
 @task
-async def generate_single_debate(debate_path: Path, **kwargs):
+async def generate_single_debate(debate_path: Path, **kwargs) -> nx.DiGraph:
     """
     generates a debate
     """
+    tags_universal = Path(kwargs["universal_tags_path"]).read_text().split("\n")
+    debate_config = DebateConfig(yaml.safe_load((debate_path / "config.yaml").read_text()))
+
+    chat_model = ChatOpenAI(**kwargs["model_kwargs"])
+    debateBuilder = DebateBuilder(
+        model=chat_model,
+        tags_universal=tags_universal,
+        tags_per_cluster=kwargs["tags_per_cluster"],
+    )
+    built_debate: nx.DiGraph = await debateBuilder.build_debate(
+        root_claim=debate_config.motion,
+        topic=debate_config.topic,
+        tag_cluster=debate_config.tags,
+        degree_config=debate_config.degree_config,
+    )
+    return built_debate
 
 
 @task
-def save_debates_in_corpus(debate_paths: list[Path], debates: list, **kwargs):
+def save_debates_in_corpus(debate_paths: list[Path], debates: list[nx.DiGraph], **kwargs):
     """
     adds and saves given debates to the corpus
     """
@@ -260,6 +278,13 @@ def save_debates_in_corpus(debate_paths: list[Path], debates: list, **kwargs):
         logger.debug("Debates: {debates}")
         logger.error(msg)
         raise ValueError(msg)
+
+    for debate_path, debate in zip(debate_paths, debates):
+        debate_config = DebateConfig(yaml.safe_load((debate_path / "config.yaml").read_text()))
+        node_link_data = nx.node_link_data(debate)
+        with open(debate_path / f"node_link_data-{debate_config.debate_uid}.json", "w") as f:
+            ujson.dump(node_link_data, f)
+
 
 async def add_all_debates(**kwargs):
     """
@@ -284,7 +309,57 @@ def perform_sanity_checks(**kwargs):
     """
     performs sanity checks on the generated corpus
     """
+
     # check for each split if all debates are generated
+    debates_counter = {SPLIT.TRAIN: 0, SPLIT.EVAL: 0, SPLIT.TEST: 0}
+
+    for split in [SPLIT.TRAIN, SPLIT.EVAL, SPLIT.TEST]:
+        for debate_path in (kwargs["path"] / split.value).iterdir():
+            if not debate_path.is_dir():
+                continue
+
+            config_path: Path = debate_path / "config.yaml"
+            if not config_path.exists():
+                logger.error(f"Config file missing for {str(debate_path)}.")
+                raise ValueError(f"Config file missing for {str(debate_path)}")
+            try:
+                DebateConfig(yaml.safe_load(config_path.read_text()))
+            except Exception as e:
+                msg = f"Invalid config file for {str(debate_path)}: {str(e)}"
+                logger.error(msg)
+                raise ValueError(msg)
+
+            json_files: list[Path] = list(debate_path.glob("*.json"))
+            if not json_files:
+                msg = f"Debate json missing for {str(debate_path)}"
+                logger.error(msg)
+                raise ValueError(msg)
+            if len(json_files) > 1:
+                msg = f"Multiple (debate?) json files found for {str(debate_path)}"
+                logger.error(msg)
+                raise ValueError(msg)
+            try:
+                node_link_data = ujson.load(json_files[0])
+                nx.DiGraph(node_link_data)
+            except Exception as e:
+                msg = f"Invalid debate json for {str(debate_path)}: {str(e)}"
+                logger.error(msg)
+                raise ValueError(msg)
+
+            debates_counter[split] += 1
+
+    for (split, expected_size) in zip(
+        [SPLIT.TRAIN, SPLIT.EVAL, SPLIT.TEST],
+        [kwargs["train_split_size"], kwargs["eval_split_size"], kwargs["test_split_size"]],
+    ):
+        if not debates_counter[split] == expected_size:
+            msg = (
+                f"Invalid number of debates in {split.value} split. "
+                f"Found {debates_counter[split]} debates, "
+                f"expected {expected_size}."
+            )
+            logger.error(msg)
+            raise ValueError(msg)
 
 
 @task
@@ -292,6 +367,7 @@ def upload_to_hf_hub(**kwargs):
     """
     uploads the debate corpus to Hugging Face Hub
     """
+    logger.warning("HF Hub upload not implemented. Skipping.")
 
 
 @flow(log_prints=True)
@@ -313,27 +389,51 @@ async def synthetic_corpus_generation(**kwargs):
 if __name__ == "__main__":
     asyncio.run(
         synthetic_corpus_generation(
-            corpus_uid="synthetic_corpus-001",
+            corpus_uid="synthetic_corpus-TEST-001",
             universal_tags_path=_UNIVERSAL_TAGS_PATH,
             eval_tags_path=_EVAL_TAGS_PATH,
             test_tags_path=_TEST_TAGS_PATH,
             tags_per_cluster=8,
             debates_per_tag_cluster=5,
-            train_split_size=1000,
-            eval_split_size=50,
-            test_split_size=50,
+            train_split_size=10,
+            eval_split_size=0,
+            test_split_size=0,
             degree_configs=[
-                [6, 6, 1, 0],
-                [5, 5, 2, 0],
-                [3, 2, 2, 1, 1, 0],
-                [4, 3, 2, 1, 0],
-                [3, 4, 2, 1, 0],
+                [2, 1, 0],
+                [1, 2, 0],
             ],
             output_dir="./output",
             model_kwargs={
                 "model": "tgi",
                 "base_url": "http://kriton.philosophie.kit.edu:8080/v1/",
-                "api_key": "no-key-required",
+                "api_key": os.getenv("API_KEY", "no-key-required"),
             },
         )
     )
+
+#    asyncio.run(
+#        synthetic_corpus_generation(
+#            corpus_uid="synthetic_corpus-001",
+#            universal_tags_path=_UNIVERSAL_TAGS_PATH,
+#            eval_tags_path=_EVAL_TAGS_PATH,
+#            test_tags_path=_TEST_TAGS_PATH,
+#            tags_per_cluster=8,
+#            debates_per_tag_cluster=5,
+#            train_split_size=1000,
+#            eval_split_size=50,
+#            test_split_size=50,
+#            degree_configs=[
+#                [6, 6, 1, 0],
+#                [5, 5, 2, 0],
+#                [3, 2, 2, 1, 1, 0],
+#                [4, 3, 2, 1, 0],
+#                [3, 4, 2, 1, 0],
+#            ],
+#            output_dir="./output",
+#            model_kwargs={
+#                "model": "tgi",
+#                "base_url": "http://kriton.philosophie.kit.edu:8080/v1/",
+#                "api_key": os.getenv("API_KEY", "no-key-required"),
+#            },
+#        )
+#    )
