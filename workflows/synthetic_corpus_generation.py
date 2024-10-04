@@ -311,7 +311,8 @@ async def add_all_debates(**kwargs):
     adds all debates to the corpus
     """
     while True:
-        debate_paths: list[Path] = [next(get_missing_debates(**kwargs), None) for _ in range(_BATCH_SIZE)]
+        missing_debates = get_missing_debates(**kwargs)
+        debate_paths: list[Path] = [next(missing_debates, None) for _ in range(_BATCH_SIZE)]
         debate_paths = [p for p in debate_paths if p]
         logger.debug(f"Next {len(debate_paths)} missing debates: {debate_paths}")
         if not debate_paths:
