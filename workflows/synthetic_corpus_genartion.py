@@ -1,6 +1,7 @@
 "Script for generating synthetic corpus"
 
 import asyncio
+import enum
 import os
 from pathlib import Path
 import random
@@ -21,6 +22,12 @@ _EVAL_TAGS_PATH = "data/eval_tags.txt"
 _TEST_TAGS_PATH = "data/test_tags.txt"
 
 
+class SPLIT(enum.Enum):
+    TRAIN = "train"
+    EVAL = "eval"
+    TEST = "test"
+
+
 class DebateConfig(BaseModel):
     split: str
     corpus_uid: str
@@ -37,6 +44,18 @@ def check_kwargs(**kwargs):
     """
     if "corpus_uid" not in kwargs:
         raise ValueError("corpus_uid is required")
+    if "universal_tags_path" not in kwargs:
+        raise ValueError("universal_tags_path is required")
+    if not Path(kwargs["universal_tags_path"]).exists():
+        raise ValueError(f"universal_tags_path does not exist: {kwargs['universal_tags_path']}")
+    if "eval_tags_path" not in kwargs:
+        raise ValueError("eval_tags_path is required")
+    if not Path(kwargs["eval_tags_path"]).exists():
+        raise ValueError(f"eval_tags_path does not exist: {kwargs['eval_tags_path']}")
+    if not Path(kwargs["test_tags_path"]).exists():
+        raise ValueError(f"test_tags_path does not exist: {kwargs['test_tags_path']}")
+    if "test_tags_path" not in kwargs:
+        raise ValueError("test_tags_path is required")
     if "tags_per_cluster" not in kwargs:
         raise ValueError("tags_per_cluster is required")
     if "debates_per_tag_cluster" not in kwargs:
@@ -88,17 +107,17 @@ def add_all_debate_configs(**kwargs):
     """
 
     split_sizes = {
-        "train": kwargs["train_split_size"],
-        "eval": kwargs["eval_split_size"],
-        "test": kwargs["test_split_size"],
+        SPLIT.TRAIN: kwargs["train_split_size"],
+        SPLIT.EVAL: kwargs["eval_split_size"],
+        SPLIT.TEST: kwargs["test_split_size"],
     }
 
     for split, split_size in split_sizes.items():
         for i in range(split_size):
             degree_config = random.choice(kwargs["degree_configs"])
-            debate_uid = f"debate-{split}-{(i+1):04d}"
+            debate_uid = f"debate-{split.value}-{(i+1):04d}"
             debate_config = DebateConfig(
-                split=split,
+                split=split.value,
                 corpus_uid=kwargs["corpus_uid"],
                 debate_uid=debate_uid,
                 tags=[],
@@ -106,7 +125,7 @@ def add_all_debate_configs(**kwargs):
                 motion={},
                 degree_config=degree_config,
             )
-            debate_path = kwargs["path"] / split / f"{debate_uid}.yaml"
+            debate_path = kwargs["path"] / split.value / f"{debate_uid}.yaml"
             config_path = debate_path / "config.yaml"
             if debate_path.exists():
                 if not config_path.exists():
@@ -127,36 +146,36 @@ def add_all_topics(**kwargs):
     """
     tags_per_cluster = kwargs["tags_per_cluster"]
 
-    universal_tags = Path(_UNIVERSAL_TAGS_PATH).read_text().split("\n")
+    universal_tags = Path(kwargs["universal_tags_path"]).read_text().split("\n")
     universal_tags = [tag.rstrip() for tag in universal_tags]
     logger.debug(f"Read {len(universal_tags)} universal tags")
-    eval_tags = Path(_EVAL_TAGS_PATH).read_text().split("\n")
+    eval_tags = Path(kwargs["eval_tags_path"]).read_text().split("\n")
     eval_tags = [tag.rstrip() for tag in eval_tags]
     logger.debug(f"Read {len(eval_tags)} eval tags")
-    test_tags = Path(_TEST_TAGS_PATH).read_text().split("\n")
+    test_tags = Path(kwargs["test_tags_path"]).read_text().split("\n")
     test_tags = [tag.rstrip() for tag in test_tags]
     logger.debug(f"Read {len(test_tags)} test tags")
 
     chat_model = ChatOpenAI(**kwargs["model_kwargs"])
     suggest_topics_chain = SuggestTopicsChain.build(chat_model)
 
-    def sample_tags(_split) -> list[str]:
-        if _split == "train":
+    def sample_tags(_split: SPLIT) -> list[str]:
+        if _split == SPLIT.TRAIN:
             tags = random.sample(universal_tags, tags_per_cluster)
-        if _split == "eval":
+        if _split == SPLIT.EVAL:
             k = tags_per_cluster // 2
             tags = random.sample(eval_tags, k) + random.sample(universal_tags, tags_per_cluster - k)
-        if _split == "test":
+        if _split == SPLIT.TEST:
             k = tags_per_cluster // 2
             tags = random.sample(test_tags, k) + random.sample(universal_tags, tags_per_cluster - k)
         else:
             raise ValueError(f"Invalid split: {_split}")
         return random.shuffle(tags)
 
-    for split in ["train", "eval", "test"]:
+    for split in [SPLIT.TRAIN, SPLIT.EVAL, SPLIT.TEST]:
         logger.info(f"Adding topics to debates in {split} split...")
         topic_suggestions = []
-        for debate_path in (kwargs["path"] / split).iterdir():
+        for debate_path in (kwargs["path"] / split.value).iterdir():
             if not debate_path.is_dir():
                 continue
             config_path: Path = debate_path / "config.yaml"
@@ -185,9 +204,9 @@ def add_all_motions(**kwargs):
     chat_model = ChatOpenAI(**kwargs["model_kwargs"])
     suggest_motion_chain = SuggestMotionChain.build(chat_model)
 
-    for split in ["train", "eval", "test"]:
+    for split in [SPLIT.TRAIN, SPLIT.EVAL, SPLIT.TEST]:
         logger.info(f"Adding motions to debates in {split} split...")
-        for debate_path in (kwargs["path"] / split).iterdir():
+        for debate_path in (kwargs["path"] / split.value).iterdir():
             if not debate_path.is_dir():
                 continue
             config_path: Path = debate_path / "config.yaml"
@@ -212,10 +231,10 @@ def add_all_motions(**kwargs):
 
 def get_missing_debates(**kwargs):
     """
-    returns a list of debate paths that are missing in the corpus
+    yields debate paths in the corpus for which debates haven't been generated yet
     """
-    for split in ["train", "eval", "test"]:
-        for debate_path in (kwargs["path"] / split).iterdir():
+    for split in [SPLIT.TRAIN, SPLIT.EVAL, SPLIT.TEST]:
+        for debate_path in (kwargs["path"] / split.value).iterdir():
             if not debate_path.is_dir():
                 continue
             config_path: Path = debate_path / "config.yaml"
@@ -224,18 +243,23 @@ def get_missing_debates(**kwargs):
 
 
 @task
-async def generate_single_debate(**kwargs):
+async def generate_single_debate(debate_path: Path, **kwargs):
     """
     generates a debate
     """
 
 
 @task
-def save_debates_in_corpus(debates, **kwargs):
+def save_debates_in_corpus(debate_paths: list[Path], debates: list, **kwargs):
     """
     adds and saves given debates to the corpus
     """
-
+    if not len(debate_paths) == len(debates):
+        msg = "Internal error: Length of debate_paths and debates must be equal."
+        logger.debug("Debate paths: {debate_paths}")
+        logger.debug("Debates: {debates}")
+        logger.error(msg)
+        raise ValueError(msg)
 
 async def add_all_debates(**kwargs):
     """
@@ -247,7 +271,7 @@ async def add_all_debates(**kwargs):
         logger.debug(f"Next {len(debate_paths)} missing debates: {debate_paths}")
         if not debate_paths:
             break
-        coros = [generate_single_debate(debate_path, **kwargs) for debate_path in debate_paths]
+        coros = [generate_single_debate(debate_path=debate_path, **kwargs) for debate_path in debate_paths]
         save_debates_in_corpus(
             debate_paths=debate_paths,
             debates=await asyncio.gather(*coros),
@@ -290,6 +314,9 @@ if __name__ == "__main__":
     asyncio.run(
         synthetic_corpus_generation(
             corpus_uid="synthetic_corpus-001",
+            universal_tags_path=_UNIVERSAL_TAGS_PATH,
+            eval_tags_path=_EVAL_TAGS_PATH,
+            test_tags_path=_TEST_TAGS_PATH,
             tags_per_cluster=8,
             debates_per_tag_cluster=5,
             train_split_size=1000,
