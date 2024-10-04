@@ -4,12 +4,13 @@
 from operator import itemgetter
 
 from langchain_core.prompts import ChatPromptTemplate
-from langchain_core.output_parsers import StrOutputParser, SimpleJsonOutputParser
+from langchain_core.output_parsers import StrOutputParser, JsonOutputParser
 from langchain_core.runnables import Runnable, RunnableLambda, RunnablePassthrough, chain
 from langchain_core.language_models.chat_models import BaseChatModel
 from loguru import logger
 
 from .base_chain_builder import BaseChainBuilder
+from . import utils
 
 _SYSTEM_PROMPT = (
     "You are a helpful assistant and an expert for critical thinking and argumentation theory. "
@@ -84,7 +85,7 @@ class SuggestTopicsChain(BaseChainBuilder):
         chain_format = (
             ChatPromptTemplate.from_messages(cls._formatting_prompt_msgs)
             | llm.bind(max_tokens=512, temperature=0)
-            | SimpleJsonOutputParser()
+            | utils.TolerantJsonOutputParser()
         )
 
         main_chain = (
@@ -197,7 +198,7 @@ class SuggestMotionChain(BaseChainBuilder):
         chain_format = (
             ChatPromptTemplate.from_messages(cls._formatting_prompt_msgs)
             | llm.bind(max_tokens=128, temperature=0)
-            | SimpleJsonOutputParser()
+            | JsonOutputParser()
         )
 
         chain_titlegen = (

@@ -6,12 +6,14 @@ import pydantic
 import random
 
 from langchain_core.prompts import ChatPromptTemplate
-from langchain_core.output_parsers import StrOutputParser, SimpleJsonOutputParser
+from langchain_core.output_parsers import StrOutputParser
 from langchain_core.runnables import Runnable, RunnableLambda, RunnablePassthrough
 from langchain_core.language_models.chat_models import BaseChatModel
 from loguru import logger
 
 from .base_chain_builder import BaseChainBuilder
+from . import utils
+
 
 _SYSTEM_PROMPT = (
     "You are a helpful assistant and an expert for critical thinking and argumentation theory. "
@@ -80,7 +82,7 @@ lead you to draw the conclusions you're drawing. Meanwhile, keep an eye out for 
 # TODO: 🔊 Add systematic logging at info/debug levels to increase visibility
 
 
-class Valences(Enum):
+class Valence(Enum):
     PRO = "PRO"
     CON = "CON"
 
@@ -89,7 +91,7 @@ class ArgumentModel(pydantic.BaseModel):
     label: str
     claim: str
     target_idx: int
-    valence: Valences
+    valence: Valence
 
 
 class IdentifyPremisesChain(BaseChainBuilder):
@@ -166,7 +168,7 @@ class IdentifyPremisesChain(BaseChainBuilder):
         chain_format = (
             ChatPromptTemplate.from_messages(cls._formatting_prompt_msgs)
             | llm.bind(max_tokens=512, temperature=0)
-            | SimpleJsonOutputParser()
+            | utils.TolerantJsonOutputParser()
             | RunnableLambda(cls.postprocess_premises)
         )
 
@@ -268,7 +270,7 @@ class RankPropsByPlausibilityChain(BaseChainBuilder):
         chain_rank = (
             ChatPromptTemplate.from_messages(cls._rank_prompt_msgs)
             | llm.bind(max_tokens=512, temperature=0)
-            | SimpleJsonOutputParser()
+            | utils.TolerantJsonOutputParser()
             | RunnableLambda(cls.postprocess_ranking)
         )
 
@@ -409,7 +411,7 @@ class GenSupportingArgumentChain(AbstractGenArgumentChain):
         subchain_format = (
             ChatPromptTemplate.from_messages(cls._formatting_prompt_msgs)
             | llm.bind(max_tokens=1024, temperature=0)
-            | SimpleJsonOutputParser()
+            | utils.TolerantJsonOutputParser()
         )
 
         main_chain = (
@@ -417,7 +419,7 @@ class GenSupportingArgumentChain(AbstractGenArgumentChain):
                 target_idx=(itemgetter("ranking") | RunnableLambda(cls.set_target_idx))
             )
             | RunnablePassthrough().assign(
-                valence=RunnableLambda(lambda x: Valences.PRO),
+                valence=RunnableLambda(lambda x: Valence.PRO),
                 taglist=(itemgetter("tags_pro") | RunnableLambda(lambda x: ' - '.join(x))),
                 premiselist=(itemgetter("premises") | RunnableLambda(cls.format_premises)),
                 nth=(itemgetter("target_idx") | RunnableLambda(cls.format_nth)),
@@ -519,7 +521,7 @@ class GenAttackingArgumentChain(AbstractGenArgumentChain):
         subchain_format = (
             ChatPromptTemplate.from_messages(cls._formatting_prompt_msgs)
             | llm.bind(max_tokens=512, temperature=0)
-            | SimpleJsonOutputParser()
+            | utils.TolerantJsonOutputParser()
         )
 
         main_chain = (
@@ -527,7 +529,7 @@ class GenAttackingArgumentChain(AbstractGenArgumentChain):
                 target_idx=(itemgetter("ranking") | RunnableLambda(cls.set_target_idx))
             )
             | RunnablePassthrough().assign(
-                valence=RunnableLambda(lambda x: Valences.PRO),
+                valence=RunnableLambda(lambda x: Valence.PRO),
                 taglist=(itemgetter("tags_con") | RunnableLambda(lambda x: ' - '.join(x))),
                 premiselist=(itemgetter("premises") | RunnableLambda(cls.format_premises)),
                 nth=(itemgetter("target_idx") | RunnableLambda(cls.format_nth)),
@@ -681,7 +683,7 @@ class SelectMostSalientChain(BaseChainBuilder):
         chain_select_salient = (
             ChatPromptTemplate.from_messages(cls._prompt_select_salient_msgs)
             | llm.bind(max_tokens=512, temperature=0.1)
-            | SimpleJsonOutputParser()
+            | utils.TolerantJsonOutputParser()
         )
 
         main_chain = (
