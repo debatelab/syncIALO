@@ -52,4 +52,3 @@ class TolerantJsonOutputParser(JsonOutputParser):
             except JSONDecodeError as e:
                 msg = f"Invalid json output: {text}"
                 raise OutputParserException(msg, llm_output=text) from e
-
