@@ -35,6 +35,7 @@ dependencies = [
   "prefect",
   "python-dotenv",
   "pyyaml",
+  "tenacity",
   "ujson",
 ]
 
