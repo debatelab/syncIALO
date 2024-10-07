@@ -107,7 +107,7 @@ class DebateBuilder:
          self, arg: ArgumentModel, target_reason_claim: str, topic: str = None, valence: Valence = None
     ) -> str | None:
         """
-        checks if arg is already in tree and returns equivalent node_id
+        checks if arg is already in tree and returns id of equivalent node
         """
         if self.vector_store is None:
             raise ValueError("Vector store not initialized.")
@@ -117,6 +117,7 @@ class DebateBuilder:
                 are_dialectically_equivalent(arg, doc, target_reason_claim=target_reason_claim, topic=topic, valence=valence) and
                 are_semantically_equivalent(arg, doc, topic=topic)
             ):
+                logger.info(f"Found equivalent node for {arg.claim}: {doc.id} {doc.page_content[:40]}")
                 return doc.id
         return None
 
