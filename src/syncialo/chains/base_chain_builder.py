@@ -11,7 +11,7 @@ class BaseChainBuilder(abc.ABC):
 
     @classmethod
     @abc.abstractmethod
-    def build(cls, llm: BaseChatModel) -> Runnable:
+    def build(cls, llm: BaseChatModel, **kwargs) -> Runnable:
         """Build chain
 
         Returns:

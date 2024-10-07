@@ -70,7 +70,7 @@ class SuggestTopicsChain(BaseChainBuilder):
     ]
 
     @classmethod
-    def build(cls, llm: BaseChatModel) -> Runnable:
+    def build(cls, llm: BaseChatModel, llm_formatting: BaseChatModel) -> Runnable:
 
         chain_draft = (
             {
@@ -84,7 +84,7 @@ class SuggestTopicsChain(BaseChainBuilder):
 
         chain_format = (
             ChatPromptTemplate.from_messages(cls._formatting_prompt_msgs)
-            | llm.bind(max_tokens=512, temperature=0)
+            | llm_formatting.bind(max_tokens=512, temperature=0)
             | utils.TolerantJsonOutputParser()
         )
 
@@ -160,7 +160,7 @@ class SuggestMotionChain(BaseChainBuilder):
             "user",
             "Can you please suggest a catchy title (2-4 words) for "
             "the central motion '{motion}' of our debate? In your answer, "
-            "just provide the tiotle, no comments or explanations."
+            "just provide the title, no comments or explanations."
         ),
     ]
 
@@ -181,7 +181,7 @@ class SuggestMotionChain(BaseChainBuilder):
         return formatted_motion
 
     @classmethod
-    def build(cls, llm: BaseChatModel) -> Runnable:
+    def build(cls, llm: BaseChatModel, llm_formatting: BaseChatModel) -> Runnable:
 
         chain_draft = (
             ChatPromptTemplate.from_messages(cls._instruction_prompt_msgs)
@@ -197,7 +197,7 @@ class SuggestMotionChain(BaseChainBuilder):
 
         chain_format = (
             ChatPromptTemplate.from_messages(cls._formatting_prompt_msgs)
-            | llm.bind(max_tokens=128, temperature=0)
+            | llm_formatting.bind(max_tokens=128, temperature=0)
             | JsonOutputParser()
         )
 

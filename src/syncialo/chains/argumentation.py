@@ -154,7 +154,7 @@ class IdentifyPremisesChain(BaseChainBuilder):
     # Chain builder
 
     @classmethod
-    def build(cls, llm: BaseChatModel) -> Runnable:
+    def build(cls, llm: BaseChatModel, llm_formatting: BaseChatModel) -> Runnable:
 
         chain_explicate_prems = (
             RunnablePassthrough().assign(
@@ -167,7 +167,7 @@ class IdentifyPremisesChain(BaseChainBuilder):
 
         chain_format = (
             ChatPromptTemplate.from_messages(cls._formatting_prompt_msgs)
-            | llm.bind(max_tokens=512, temperature=0)
+            | llm_formatting.bind(max_tokens=512, temperature=0)
             | utils.TolerantJsonOutputParser()
             | RunnableLambda(cls.postprocess_premises)
         )
@@ -400,7 +400,7 @@ class GenSupportingArgumentChain(AbstractGenArgumentChain):
     # Chain builder
 
     @classmethod
-    def build(cls, llm: BaseChatModel) -> Runnable:
+    def build(cls, llm: BaseChatModel, llm_formatting: BaseChatModel) -> Runnable:
 
         subchain_draft = (
             ChatPromptTemplate.from_messages(cls._instruction_prompt_msgs)
@@ -410,7 +410,7 @@ class GenSupportingArgumentChain(AbstractGenArgumentChain):
 
         subchain_format = (
             ChatPromptTemplate.from_messages(cls._formatting_prompt_msgs)
-            | llm.bind(max_tokens=1024, temperature=0)
+            | llm_formatting.bind(max_tokens=1024, temperature=0)
             | utils.TolerantJsonOutputParser()
         )
 
@@ -510,7 +510,7 @@ class GenAttackingArgumentChain(AbstractGenArgumentChain):
     # Chain builder
 
     @classmethod
-    def build(cls, llm: BaseChatModel) -> Runnable:
+    def build(cls, llm: BaseChatModel, llm_formatting: BaseChatModel) -> Runnable:
 
         subchain_draft = (
             ChatPromptTemplate.from_messages(cls._instruction_prompt_msgs)
@@ -520,7 +520,7 @@ class GenAttackingArgumentChain(AbstractGenArgumentChain):
 
         subchain_format = (
             ChatPromptTemplate.from_messages(cls._formatting_prompt_msgs)
-            | llm.bind(max_tokens=512, temperature=0)
+            | llm_formatting.bind(max_tokens=512, temperature=0)
             | utils.TolerantJsonOutputParser()
         )
 
@@ -562,11 +562,11 @@ class GenerateProAndConChain(BaseChainBuilder):
     """
 
     @classmethod
-    def build(cls, llm: BaseChatModel) -> Runnable:
+    def build(cls, llm: BaseChatModel, llm_formatting: BaseChatModel) -> Runnable:
 
         rank_by_plausibility = RankPropsByPlausibilityChain.build(llm)
-        gen_supporting_argument = GenSupportingArgumentChain.build(llm)
-        gen_attacking_argument = GenAttackingArgumentChain.build(llm)
+        gen_supporting_argument = GenSupportingArgumentChain.build(llm, llm_formatting)
+        gen_attacking_argument = GenAttackingArgumentChain.build(llm, llm_formatting)
 
         # preprocessing methods
 
@@ -678,7 +678,7 @@ class SelectMostSalientChain(BaseChainBuilder):
     # Chain builder
 
     @classmethod
-    def build(cls, llm: BaseChatModel) -> Runnable:
+    def build(cls, llm: BaseChatModel, **kwargs) -> Runnable:
 
         chain_select_salient = (
             ChatPromptTemplate.from_messages(cls._prompt_select_salient_msgs)

@@ -27,6 +27,7 @@ classifiers = [
 dependencies = [
   "datasets",
   "langchain>=0.3,<0.4",
+  "langchain_community>=0.3",
   "langchain-huggingface>=0.1,<0.2",
   "langchain-openai>=0.2,<0.3",
   "loguru",
@@ -46,6 +47,7 @@ path = "src/syncialo/__about__.py"
 
 [tool.hatch.envs.default]
 dependencies = [
+  "faiss-cpu",
   "coverage[toml]>=6.5",
   "pytest",
   "Flake8-pyproject",

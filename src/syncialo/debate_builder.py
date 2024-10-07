@@ -1,10 +1,16 @@
-import networkx as nx
+"""DebateBuilder class to build a debate tree from a given motion."""
+
+import os
 import random
 import uuid
 
-from loguru import logger
-
 import datasets
+from loguru import logger
+import networkx as nx
+
+from langchain_community.vectorstores import FAISS
+from langchain_community.embeddings import HuggingFaceInferenceAPIEmbeddings
+from langchain_core.documents.base import Document
 
 from syncialo.chains.argumentation import (
     IdentifyPremisesChain,
@@ -13,6 +19,7 @@ from syncialo.chains.argumentation import (
     ArgumentModel,
     Valence,
 )
+from syncialo.chains.equivalence import are_dialectically_equivalent, are_semantically_equivalent
 
 _ARGS_PER_PERSONA = 2
 _PERSONAS_DATASET = dict(
@@ -21,12 +28,19 @@ _PERSONAS_DATASET = dict(
     split="train"
 )
 _TAGS_PER_CLUSTER = 8
+_TOP_K_RETRIEVAL = 3
+_EMBEDDINGS_MODEL = "sentence-transformers/all-MiniLM-l6-v2"
 
 
 class DebateBuilder:
 
     def __init__(self, model, **kwargs):
         self.model = model
+
+        if "formatter_model" not in kwargs:
+            self.formatter_model = model
+        else:
+            self.formatter_model = kwargs["formatter_model"]
 
         if "tags_universal" not in kwargs:
             raise ValueError("Argument 'tags_universal' is required.")
@@ -43,13 +57,25 @@ class DebateBuilder:
             raise ValueError("Argument 'tags_test' is required for split 'test'.")
 
         # build sub-chains
-        self.chain_identify_premises = IdentifyPremisesChain.build(model)
-        self.chain_generate_pro_and_con = GenerateProAndConChain.build(model)
+        self.chain_identify_premises = IdentifyPremisesChain.build(model, llm_formatting=self.formatter_model)
+        self.chain_generate_pro_and_con = GenerateProAndConChain.build(model, llm_formatting=self.formatter_model)
         self.chain_select_most_salient = SelectMostSalientChain.build(model)
 
         # download and init persona datasets
         ds = datasets.load_dataset(**_PERSONAS_DATASET)
         self.ds_personas = ds.select_columns(["input persona"])
+
+        # vector store for duplicate detection
+        self.vector_store: FAISS | None = None
+
+    def init_vector_store(self, root_claim: str, root_id: str):
+        logger.debug("Initializing vector store for duplicate detection.")
+        embeddings = HuggingFaceInferenceAPIEmbeddings(
+            api_key=os.getenv("HUGGINGFACEHUB_API_TOKEN"),
+            model_name=_EMBEDDINGS_MODEL
+        )
+        documents = [Document(root_claim, id=root_id)]
+        self.vector_store = FAISS.from_documents(documents=documents, embedding=embeddings)
 
     async def identify_premises(self, node_id: str, root_id: str, tree: nx.DiGraph) -> list[str]:
         """
@@ -76,6 +102,23 @@ class DebateBuilder:
             tree.nodes[node_id]['premises'] = premises
 
         return premises
+
+    def get_equivalent(
+         self, arg: ArgumentModel, target_reason_claim: str, topic: str = None, valence: Valence = None
+    ) -> str | None:
+        """
+        checks if arg is already in tree and returns equivalent node_id
+        """
+        if self.vector_store is None:
+            raise ValueError("Vector store not initialized.")
+        similiar_docs = self.vector_store.search("I cherish wildlife.", search_type="similarity", k=_TOP_K_RETRIEVAL)
+        for doc in similiar_docs:
+            if (
+                are_dialectically_equivalent(arg, doc, target_reason_claim=target_reason_claim, topic=topic, valence=valence) and
+                are_semantically_equivalent(arg, doc, topic=topic)
+            ):
+                return doc.id
+        return None
 
     @logger.catch
     async def build_subtree(
@@ -106,7 +149,7 @@ class DebateBuilder:
         logger.debug(f"Target reason claim: {tree.nodes[node_id]['claim'][:40]}")
         if not degree:
             return
-
+        
         persona_idxs = random.sample(range(len(self.ds_personas)), k=degree)
         personas: list[str] = self.ds_personas.select(persona_idxs)["input persona"]
 
@@ -146,6 +189,38 @@ class DebateBuilder:
             "k": degree,
         })
 
+        # check for duplicates
+        for pro in salient_pros.copy():
+            equivalent_node_uid = self.get_equivalent(
+                pro,
+                target_reason_claim=tree.nodes[node_id]['claim'],
+                topic=topic,
+                valence=Valence.PRO
+            )
+            if equivalent_node_uid:
+                salient_pros.remove(pro)
+                tree.add_edge(
+                    equivalent_node_uid,
+                    node_id,
+                    valence=Valence.PRO.value,
+                    target_idx=pro.target_idx
+                )
+        for con in salient_cons.copy():
+            equivalent_node_uid = self.get_equivalent(
+                con,
+                target_reason_claim=tree.nodes[node_id]['claim'],
+                topic=topic,
+                valence=Valence.CON
+            )
+            if equivalent_node_uid:
+                salient_cons.remove(con)
+                tree.add_edge(
+                    equivalent_node_uid,
+                    node_id,
+                    valence=Valence.CON.value,
+                    target_idx=con.target_idx
+                )
+
         # add new nodes and edges to tree
         con_ids = []
         pro_ids = []
@@ -162,6 +237,7 @@ class DebateBuilder:
                 valence=Valence.PRO.value,
                 target_idx=new_pro.target_idx)
             pro_ids.append(uid)
+            self.vector_store.add_document(Document(new_pro.claim, id=uid))
         for new_con in salient_cons:
             uid = str(uuid.uuid4())
             tree.add_node(
@@ -175,6 +251,7 @@ class DebateBuilder:
                 valence=Valence.CON.value,
                 target_idx=new_con.target_idx)
             con_ids.append(uid)
+            self.vector_store.add_document(Document(new_con.claim, id=uid))
 
         # recursion
         for pro_id in pro_ids:
@@ -220,6 +297,7 @@ class DebateBuilder:
             claim=root_claim,
             label=root_label,
         )
+        self.init_vector_store(root_claim=root_claim, root_id=root_id)
 
         await self.build_subtree(
             node_id=root_id,
@@ -231,7 +309,6 @@ class DebateBuilder:
         )
 
         # TODO: Check for duplicate labels and revise/specify labels if necessary
-        # TODO: Check for duplicate arguments in entire tree/DAG and match arguments
 
         return tree
 

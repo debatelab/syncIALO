@@ -78,6 +78,22 @@ def check_kwargs(**kwargs):
         logger.warning("SYNCIALO_API_KEY is not set. Will try to access inference server with api key.")
 
 
+def init_models(**kwargs) -> tuple[ChatOpenAI, ChatOpenAI]:
+    """
+    initializes the models
+    """
+    model_kwargs = kwargs["model_kwargs"]
+    model_kwargs["api_key"] = os.getenv("SYNCIALO_API_KEY", "NONE")
+    chat_model = ChatOpenAI(**model_kwargs)
+    if "formatter_model_kwargs" in kwargs:
+        formatter_model_kwargs = kwargs["model_kwargs"]
+        formatter_model_kwargs["api_key"] = os.getenv("SYNCIALO_API_KEY2", "NONE")
+        formatter_model = ChatOpenAI(**formatter_model_kwargs)
+    else:
+        formatter_model = chat_model
+    return chat_model, formatter_model
+
+
 @task
 def create_corpus_dir(**kwargs) -> Path:
     """
@@ -162,10 +178,8 @@ def add_all_topics(**kwargs):
     test_tags = [tag.rstrip() for tag in test_tags]
     logger.debug(f"Read {len(test_tags)} test tags")
 
-    model_kwargs = kwargs["model_kwargs"]
-    model_kwargs["api_key"] = os.getenv("SYNCIALO_API_KEY", "NONE")
-    chat_model = ChatOpenAI(**model_kwargs)
-    suggest_topics_chain = SuggestTopicsChain.build(chat_model)
+    chat_model, formatter_model = init_models(**kwargs)
+    suggest_topics_chain = SuggestTopicsChain.build(chat_model, llm_formatting=formatter_model)
 
     def sample_tags(_split: SPLIT) -> list[str]:
         if _split == SPLIT.TRAIN:
@@ -213,10 +227,8 @@ def add_all_motions(**kwargs):
     """
     adds topics and motions to the corpus' debates
     """
-    model_kwargs = kwargs["model_kwargs"]
-    model_kwargs["api_key"] = os.getenv("SYNCIALO_API_KEY", "NONE")
-    chat_model = ChatOpenAI(**model_kwargs)
-    suggest_motion_chain = SuggestMotionChain.build(chat_model)
+    chat_model, formatter_model = init_models(**kwargs)
+    suggest_motion_chain = SuggestMotionChain.build(chat_model, llm_formatting=formatter_model)
 
     for split in [SPLIT.TRAIN, SPLIT.EVAL, SPLIT.TEST]:
         if not (kwargs["path"]/split.value).exists():
@@ -270,11 +282,10 @@ async def generate_single_debate(debate_path: Path, **kwargs) -> nx.DiGraph:
     tags_universal = Path(kwargs["universal_tags_path"]).read_text().split("\n")
     debate_config = DebateConfig(**yaml.safe_load((debate_path / "config.yaml").read_text()))
 
-    model_kwargs = kwargs["model_kwargs"]
-    model_kwargs["api_key"] = os.getenv("SYNCIALO_API_KEY", "NONE")
-    chat_model = ChatOpenAI(**model_kwargs)
+    chat_model, formatter_model = init_models(**kwargs)
     debateBuilder = DebateBuilder(
         model=chat_model,
+        formatter_model=formatter_model,
         tags_universal=tags_universal,
         tags_per_cluster=kwargs["tags_per_cluster"],
     )
