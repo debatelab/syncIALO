@@ -1,7 +1,6 @@
 """Equivalence tests"""
 
 from loguru import logger
-import networkx as nx
 from langchain_core.documents.base import Document
 
 from syncialo.chains.argumentation import ArgumentModel, Valence
@@ -23,15 +22,27 @@ CLAIM: {claim}
 
 REASON: {reason}
 """
-LABELS_DIALECTICS = ["directly confirmed by", "directly disconfirmed by", "independent of"]
+LABELS_DIALECTICS = [
+    "directly confirmed by",
+    "directly disconfirmed by",
+    "independent of",
+]
 HYPOTHESIS_TEMPLATE_DIALECTICS = "CLAIM is {} REASON."
 
 
-def are_dialectically_equivalent(arg: ArgumentModel, doc: Document, target_reason_claim: str, topic: str = None, valence: Valence = None) -> bool:
+def are_dialectically_equivalent(
+    arg: ArgumentModel,
+    doc: Document,
+    target_reason_claim: str,
+    topic: str = None,
+    valence: Valence = None,
+) -> bool:
     check = classify(
-        TEXT_TEMPLATE_DIALECTICS.format(claim=target_reason_claim, reason=doc.page_content, topic=topic),
+        TEXT_TEMPLATE_DIALECTICS.format(
+            claim=target_reason_claim, reason=doc.page_content, topic=topic
+        ),
         LABELS_DIALECTICS,
-        HYPOTHESIS_TEMPLATE_DIALECTICS
+        HYPOTHESIS_TEMPLATE_DIALECTICS,
     )
     if not isinstance(check, ClassificationResult):
         logger.error(f"Unexpected output from classifier: {check}")
@@ -43,14 +54,16 @@ def are_dialectically_equivalent(arg: ArgumentModel, doc: Document, target_reaso
     return False
 
 
-def are_semantically_equivalent(arg: ArgumentModel, doc: Document, topic: str = None) -> bool:
+def are_semantically_equivalent(
+    arg: ArgumentModel, doc: Document, topic: str = None
+) -> bool:
     checks = classify(
         [
             TEXT_TEMPLATE_NLI.format(claim_1=arg.claim, claim_2=doc.page_content),
             TEXT_TEMPLATE_NLI.format(claim_1=doc.page_content, claim_2=arg.claim),
         ],
         LABELS_NLI,
-        HYPOTHESIS_TEMPLATE_NLI
+        HYPOTHESIS_TEMPLATE_NLI,
     )
     if not all(isinstance(check, ClassificationResult) for check in checks):
         logger.error(f"Unexpected output from classifier: {checks}")

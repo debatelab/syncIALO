@@ -1,5 +1,6 @@
 """DebateBuilder class to build a debate tree from a given motion."""
 
+import asyncio
 import os
 import random
 import uuid
@@ -19,13 +20,14 @@ from syncialo.chains.argumentation import (
     ArgumentModel,
     Valence,
 )
-from syncialo.chains.equivalence import are_dialectically_equivalent, are_semantically_equivalent
+from syncialo.chains.equivalence import (
+    are_dialectically_equivalent,
+    are_semantically_equivalent,
+)
 
 _ARGS_PER_PERSONA = 2
 _PERSONAS_DATASET = dict(
-    path="proj-persona/PersonaHub",
-    name="reasoning",
-    split="train"
+    path="proj-persona/PersonaHub", name="reasoning", split="train"
 )
 _TAGS_PER_CLUSTER = 8
 _TOP_K_RETRIEVAL = 3
@@ -33,7 +35,6 @@ _EMBEDDINGS_MODEL = "sentence-transformers/all-MiniLM-l6-v2"
 
 
 class DebateBuilder:
-
     def __init__(self, model, **kwargs):
         self.model = model
 
@@ -57,8 +58,12 @@ class DebateBuilder:
             raise ValueError("Argument 'tags_test' is required for split 'test'.")
 
         # build sub-chains
-        self.chain_identify_premises = IdentifyPremisesChain.build(model, llm_formatting=self.formatter_model)
-        self.chain_generate_pro_and_con = GenerateProAndConChain.build(model, llm_formatting=self.formatter_model)
+        self.chain_identify_premises = IdentifyPremisesChain.build(
+            model, llm_formatting=self.formatter_model
+        )
+        self.chain_generate_pro_and_con = GenerateProAndConChain.build(
+            model, llm_formatting=self.formatter_model
+        )
         self.chain_select_most_salient = SelectMostSalientChain.build(model)
 
         # download and init persona datasets
@@ -71,53 +76,73 @@ class DebateBuilder:
     def init_vector_store(self, root_claim: str, root_id: str):
         logger.debug("Initializing vector store for duplicate detection.")
         embeddings = HuggingFaceInferenceAPIEmbeddings(
-            api_key=os.getenv("HUGGINGFACEHUB_API_TOKEN"),
-            model_name=_EMBEDDINGS_MODEL
+            api_key=os.getenv("HUGGINGFACEHUB_API_TOKEN"), model_name=_EMBEDDINGS_MODEL
         )
         documents = [Document(root_claim, id=root_id)]
-        self.vector_store = FAISS.from_documents(documents=documents, embedding=embeddings)
+        self.vector_store = FAISS.from_documents(
+            documents=documents, embedding=embeddings
+        )
 
-    async def identify_premises(self, node_id: str, root_id: str, tree: nx.DiGraph) -> list[str]:
+    async def identify_premises(
+        self, node_id: str, root_id: str, tree: nx.DiGraph
+    ) -> list[str]:
         """
         checks if premises of node_id have already been identified,
         otherwise calls LLM-chain to do so, caches and returns result
         """
         if node_id == root_id:
-            return [tree.nodes[node_id]['claim']]
+            return [tree.nodes[node_id]["claim"]]
 
-        _, parent_id, data = next(iter(tree.out_edges(node_id, data=True)), (None, None, None))
+        _, parent_id, data = next(
+            iter(tree.out_edges(node_id, data=True)), (None, None, None)
+        )
         if parent_id is None:
             raise ValueError("Node %s has no parent node." % node_id)
 
         # look-up premises
-        premises = tree.nodes[node_id].get('premises')
+        premises = tree.nodes[node_id].get("premises")
 
         if premises is None:
-            premises = await self.chain_identify_premises.ainvoke({
-                "argument": tree.nodes[node_id]['claim'],
-                "conclusion": tree.nodes[parent_id]['claim'],
-                "valence": Valence(data['valence']),  # valences are stored as str in networkx graph
-            })
+            premises = await self.chain_identify_premises.ainvoke(
+                {
+                    "argument": tree.nodes[node_id]["claim"],
+                    "conclusion": tree.nodes[parent_id]["claim"],
+                    "valence": Valence(
+                        data["valence"]
+                    ),  # valences are stored as str in networkx graph
+                }
+            )
             # cache premises as node attribute in tree
-            tree.nodes[node_id]['premises'] = premises
+            tree.nodes[node_id]["premises"] = premises
 
         return premises
 
     def get_equivalent(
-         self, arg: ArgumentModel, target_reason_claim: str, topic: str = None, valence: Valence = None
+        self,
+        arg: ArgumentModel,
+        target_reason_claim: str,
+        topic: str = None,
+        valence: Valence = None,
     ) -> str | None:
         """
         checks if arg is already in tree and returns id of equivalent node
         """
         if self.vector_store is None:
             raise ValueError("Vector store not initialized.")
-        similiar_docs = self.vector_store.search("I cherish wildlife.", search_type="similarity", k=_TOP_K_RETRIEVAL)
+        similiar_docs = self.vector_store.search(
+            "I cherish wildlife.", search_type="similarity", k=_TOP_K_RETRIEVAL
+        )
         for doc in similiar_docs:
-            if (
-                are_dialectically_equivalent(arg, doc, target_reason_claim=target_reason_claim, topic=topic, valence=valence) and
-                are_semantically_equivalent(arg, doc, topic=topic)
-            ):
-                logger.info(f"Found equivalent node for {arg.claim}: {doc.id} {doc.page_content[:40]}")
+            if are_dialectically_equivalent(
+                arg,
+                doc,
+                target_reason_claim=target_reason_claim,
+                topic=topic,
+                valence=valence,
+            ) and are_semantically_equivalent(arg, doc, topic=topic):
+                logger.info(
+                    f"Found equivalent node for {arg.claim}: {doc.id} {doc.page_content[:40]}"
+                )
                 return doc.id
         return None
 
@@ -150,13 +175,15 @@ class DebateBuilder:
         logger.debug(f"Target reason claim: {tree.nodes[node_id]['claim'][:40]}")
         if not degree:
             return
-        
+
         persona_idxs = random.sample(range(len(self.ds_personas)), k=degree)
         personas: list[str] = self.ds_personas.select(persona_idxs)["input persona"]
 
         premises = await self.identify_premises(node_id, root_id, tree)
         if not premises:
-            logger.warning(f"No premises found for node: {tree.nodes[node_id]['claim']}. Skip building subtree.")
+            logger.warning(
+                f"No premises found for node: {tree.nodes[node_id]['claim']}. Skip building subtree."
+            )
             return
 
         batched_input = [
@@ -166,63 +193,84 @@ class DebateBuilder:
                 "tags_universal": self.tags_universal,
                 "tags_per_cluster": self.tags_per_cluster,
                 "persona": persona,
-                "n": _ARGS_PER_PERSONA
+                "n": _ARGS_PER_PERSONA,
             }
             for persona in personas
         ]
 
         # generate 2*n*degree arguments
-        batched_generated_args = await self.chain_generate_pro_and_con.abatch(batched_input)
-        all_generated_pros = [arg for gen_args in batched_generated_args for arg in gen_args["new_pros"]]
-        all_generated_cons = [arg for gen_args in batched_generated_args for arg in gen_args["new_cons"]]
+        batched_generated_args = await self.chain_generate_pro_and_con.abatch(
+            batched_input
+        )
+        all_generated_pros = [
+            arg for gen_args in batched_generated_args for arg in gen_args["new_pros"]
+        ]
+        all_generated_cons = [
+            arg for gen_args in batched_generated_args for arg in gen_args["new_cons"]
+        ]
 
         # select k most salient, mutually independent args
-        salient_pros: list[ArgumentModel] = await self.chain_select_most_salient.ainvoke({
-            "args": all_generated_pros,
-            "conclusion": tree.nodes[node_id]['claim'],
-            "valence": Valence.PRO,
-            "k": degree,
-        })
-        salient_cons: list[ArgumentModel] = await self.chain_select_most_salient.ainvoke({
-            "args": all_generated_cons,
-            "conclusion": tree.nodes[node_id]['claim'],
-            "valence": Valence.CON,
-            "k": degree,
-        })
+        salient_pros: list[ArgumentModel] = (
+            await self.chain_select_most_salient.ainvoke(
+                {
+                    "args": all_generated_pros,
+                    "conclusion": tree.nodes[node_id]["claim"],
+                    "valence": Valence.PRO,
+                    "k": degree,
+                }
+            )
+        )
+        salient_cons: list[ArgumentModel] = (
+            await self.chain_select_most_salient.ainvoke(
+                {
+                    "args": all_generated_cons,
+                    "conclusion": tree.nodes[node_id]["claim"],
+                    "valence": Valence.CON,
+                    "k": degree,
+                }
+            )
+        )
 
-        # check for duplicates
-        for pro in salient_pros.copy():
-            equivalent_node_uid = self.get_equivalent(
+        # check for and discard duplicates
+        coros_pro = [
+            self.get_equivalent(
                 pro,
-                target_reason_claim=tree.nodes[node_id]['claim'],
+                target_reason_claim=tree.nodes[node_id]["claim"],
                 topic=topic,
-                valence=Valence.PRO
+                valence=Valence.PRO,
             )
-            if equivalent_node_uid:
-                salient_pros.remove(pro)
-                tree.add_edge(
-                    equivalent_node_uid,
-                    node_id,
-                    valence=Valence.PRO.value,
-                    target_idx=pro.target_idx
-                )
-        for con in salient_cons.copy():
-            equivalent_node_uid = self.get_equivalent(
+            for pro in salient_pros
+        ]
+        coros_con = [
+            self.get_equivalent(
                 con,
-                target_reason_claim=tree.nodes[node_id]['claim'],
+                target_reason_claim=tree.nodes[node_id]["claim"],
                 topic=topic,
-                valence=Valence.CON
+                valence=Valence.CON,
             )
-            if equivalent_node_uid:
-                salient_cons.remove(con)
-                tree.add_edge(
-                    equivalent_node_uid,
-                    node_id,
-                    valence=Valence.CON.value,
-                    target_idx=con.target_idx
-                )
+            for con in salient_cons
+        ]
 
-        # add new nodes and edges to tree
+        for equivalent_node_uid, new_node in zip(
+            await asyncio.gather(*coros_pro, *coros_con),
+            salient_pros.copy() + salient_cons.copy()
+        ):
+            if equivalent_node_uid:
+                if new_node in salient_pros:
+                    salient_pros.remove(new_node)
+                    valence = Valence.PRO
+                if new_node in salient_cons:
+                    salient_cons.remove(new_node)
+                    valence = Valence.CON
+                if not tree.has_edge(equivalent_node_uid, node_id):
+                    tree.add_edge(
+                        equivalent_node_uid,
+                        node_id,
+                        valence=valence.value,
+                        target_idx=new_node.target_idx,
+                    )
+
+        # add remaining non-duplicate new nodes and edges to tree
         con_ids = []
         pro_ids = []
         for new_pro in salient_pros:
@@ -233,10 +281,8 @@ class DebateBuilder:
                 label=new_pro.label,
             )
             tree.add_edge(
-                uid,
-                node_id,
-                valence=Valence.PRO.value,
-                target_idx=new_pro.target_idx)
+                uid, node_id, valence=Valence.PRO.value, target_idx=new_pro.target_idx
+            )
             pro_ids.append(uid)
             self.vector_store.add_document(Document(new_pro.claim, id=uid))
         for new_con in salient_cons:
@@ -247,10 +293,8 @@ class DebateBuilder:
                 label=new_con.label,
             )
             tree.add_edge(
-                uid,
-                node_id,
-                valence=Valence.CON.value,
-                target_idx=new_con.target_idx)
+                uid, node_id, valence=Valence.CON.value, target_idx=new_con.target_idx
+            )
             con_ids.append(uid)
             self.vector_store.add_document(Document(new_con.claim, id=uid))
 
@@ -282,7 +326,6 @@ class DebateBuilder:
         tag_cluster,
         degree_config,
     ) -> nx.DiGraph:
-
         if isinstance(motion, dict):
             root_claim = motion["claim"]
             root_label = motion["label"]
@@ -315,13 +358,11 @@ class DebateBuilder:
 
 
 def to_kialo(tree, topic=""):
-
     lines = []
     lines.append(f"Discussion Title: {topic}")
     lines.append("")
 
     def add_node(target, counter, val=None):
-
         if val is None:
             sym = " "
         else:
@@ -333,11 +374,7 @@ def to_kialo(tree, topic=""):
         i = 0
         for source, _, data in tree.in_edges(target, data=True):
             i += 1
-            add_node(
-                source,
-                counter+f"{i}.",
-                data["valence"].value
-            )
+            add_node(source, counter + f"{i}.", data["valence"].value)
 
     root_id = next(n for n in tree.nodes if len(tree.out_edges(n)) == 0)
     counter = "1."
