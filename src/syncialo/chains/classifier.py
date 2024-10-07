@@ -5,11 +5,12 @@ import os
 
 from loguru import logger
 from pydantic import BaseModel
+import tenacity
 
 
 _API_URL = os.getenv(
-    'SYNCIALO_CLASSIFIER_URL',
-    "https://api-inference.huggingface.co/models/MoritzLaurer/deberta-v3-large-zeroshot-v2.0"
+    "SYNCIALO_CLASSIFIER_URL",
+    "https://api-inference.huggingface.co/models/MoritzLaurer/deberta-v3-large-zeroshot-v2.0",
 )
 _HEADERS = {"Authorization": f"Bearer {os.getenv('HUGGINGFACEHUB_API_TOKEN')}"}
 
@@ -26,11 +27,12 @@ async def _aquery(payload):
             return await response.json()
 
 
+@tenacity.retry(wait=tenacity.wait_random_exponential(multiplier=1, max=60))
 async def classify(
     sequences: str | list[str],
     labels: list[str],
     hypothesis_template: str | None = None,
-) -> list[ClassificationResult | dict]:
+) -> list[ClassificationResult]:
     """Classify a text sequence with zero-shot classification."""
 
     if isinstance(sequences, str):
@@ -42,21 +44,12 @@ async def classify(
 
     outputs = await _aquery({"inputs": sequences, "parameters": parameters})
 
-    results: list[ClassificationResult | dict] = []
+    results: list[ClassificationResult] = []
+    if "error" in outputs:
+        msg = f"Error from classifier: {outputs['error']}"
+        logger.warning(msg)
+        raise Exception(msg)
     for output in outputs:
-        if "error" in output:
-            results.append(output)
-        else:
-            try:
-                results.append(ClassificationResult(**output))
-            except Exception as e:
-                logger.error(f"Error parsing classification result: {output}")
-                logger.error(e)
-                results.append(
-                    {
-                        "error": "error parsing classification result",
-                        "unexpected_output": output,
-                    }
-                )
+        results.append(ClassificationResult(**output))
 
     return results

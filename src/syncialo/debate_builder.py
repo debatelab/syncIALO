@@ -78,7 +78,7 @@ class DebateBuilder:
         embeddings = HuggingFaceInferenceAPIEmbeddings(
             api_key=os.getenv("HUGGINGFACEHUB_API_TOKEN"), model_name=_EMBEDDINGS_MODEL
         )
-        documents = [Document(root_claim, id=root_id)]
+        documents = [Document(root_claim, metadata={"uid": root_id})]
         self.vector_store = FAISS.from_documents(
             documents=documents, embedding=embeddings
         )
@@ -117,10 +117,12 @@ class DebateBuilder:
 
         return premises
 
-    def get_equivalent(
+    async def get_equivalent(
         self,
         arg: ArgumentModel,
-        target_reason_claim: str,
+        target_node_id: str,
+        root_id: str,
+        tree: nx.DiGraph,
         topic: str = None,
         valence: Valence = None,
     ) -> str | None:
@@ -132,16 +134,19 @@ class DebateBuilder:
         similiar_docs = self.vector_store.search(
             "I cherish wildlife.", search_type="similarity", k=_TOP_K_RETRIEVAL
         )
+        target_reason_claim = tree.nodes[target_node_id]["claim"]
         for doc in similiar_docs:
-            if are_dialectically_equivalent(
+            if doc.metadata.get("uid") in [target_node_id, root_id]:
+                continue
+            if await are_dialectically_equivalent(
                 arg,
                 doc,
                 target_reason_claim=target_reason_claim,
                 topic=topic,
                 valence=valence,
-            ) and are_semantically_equivalent(arg, doc, topic=topic):
+            ) and await are_semantically_equivalent(arg, doc, topic=topic):
                 logger.info(
-                    f"Found equivalent node for {arg.claim}: {doc.id} {doc.page_content[:40]}"
+                    f"Found equivalent node for '{arg.claim}': {doc.metadata.get("uid")} | {doc.page_content[:100]}"
                 )
                 return doc.id
         return None
@@ -235,7 +240,9 @@ class DebateBuilder:
         coros_pro = [
             self.get_equivalent(
                 pro,
-                target_reason_claim=tree.nodes[node_id]["claim"],
+                target_node_id=node_id,
+                root_id=root_id,
+                tree=tree,
                 topic=topic,
                 valence=Valence.PRO,
             )
@@ -244,7 +251,9 @@ class DebateBuilder:
         coros_con = [
             self.get_equivalent(
                 con,
-                target_reason_claim=tree.nodes[node_id]["claim"],
+                target_node_id=node_id,
+                root_id=root_id,
+                tree=tree,
                 topic=topic,
                 valence=Valence.CON,
             )
@@ -284,7 +293,7 @@ class DebateBuilder:
                 uid, node_id, valence=Valence.PRO.value, target_idx=new_pro.target_idx
             )
             pro_ids.append(uid)
-            self.vector_store.add_document(Document(new_pro.claim, id=uid))
+            self.vector_store.add_documents([Document(new_pro.claim, metadata={"uid": uid})])
         for new_con in salient_cons:
             uid = str(uuid.uuid4())
             tree.add_node(
@@ -296,7 +305,7 @@ class DebateBuilder:
                 uid, node_id, valence=Valence.CON.value, target_idx=new_con.target_idx
             )
             con_ids.append(uid)
-            self.vector_store.add_document(Document(new_con.claim, id=uid))
+            self.vector_store.add_documents([Document(new_con.claim, metadata={"uid": uid})])
 
         # recursion
         for pro_id in pro_ids:
