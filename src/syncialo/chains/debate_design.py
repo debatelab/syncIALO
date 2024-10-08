@@ -4,7 +4,7 @@
 from operator import itemgetter
 
 from langchain_core.prompts import ChatPromptTemplate
-from langchain_core.output_parsers import StrOutputParser, JsonOutputParser
+from langchain_core.output_parsers import StrOutputParser
 from langchain_core.runnables import Runnable, RunnableLambda, RunnablePassthrough, chain
 from langchain_core.language_models.chat_models import BaseChatModel
 from loguru import logger
@@ -84,7 +84,7 @@ class SuggestTopicsChain(BaseChainBuilder):
 
         chain_format = (
             ChatPromptTemplate.from_messages(cls._formatting_prompt_msgs)
-            | llm_formatting.bind(max_tokens=512, temperature=0)
+            | llm_formatting.bind(max_tokens=512, temperature=0, response_format={"type": "json_object"})
             | utils.TolerantJsonOutputParser()
         )
 
@@ -197,8 +197,8 @@ class SuggestMotionChain(BaseChainBuilder):
 
         chain_format = (
             ChatPromptTemplate.from_messages(cls._formatting_prompt_msgs)
-            | llm_formatting.bind(max_tokens=128, temperature=0)
-            | JsonOutputParser()
+            | llm_formatting.bind(max_tokens=128, temperature=0, response_format={"type": "json_object"})
+            | utils.TolerantJsonOutputParser()
         )
 
         chain_titlegen = (

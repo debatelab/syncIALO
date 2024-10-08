@@ -14,7 +14,6 @@ from loguru import logger
 from .base_chain_builder import BaseChainBuilder
 from . import utils
 
-
 _SYSTEM_PROMPT = (
     "You are a helpful assistant and an expert for critical thinking and argumentation theory. "
     "Moreover, you're an experienced debater, having won major debates and served as judge "
@@ -26,7 +25,7 @@ _SYSTEM_PROMPT = (
 _SYSTEM_PROMPT_PERSONA = (
     "You are: {persona}.\n"
     "You have been chosen to assist a collaborative debating project as an external expert, "
-    "given you outstanding critical thinking and argumentation skills.\n"
+    "given your outstanding critical thinking and argumentation skills.\n"
     "You read instructions carefully and follow them precisely. You give concise and clear answers."
 )
 
@@ -167,7 +166,7 @@ class IdentifyPremisesChain(BaseChainBuilder):
 
         chain_format = (
             ChatPromptTemplate.from_messages(cls._formatting_prompt_msgs)
-            | llm_formatting.bind(max_tokens=512, temperature=0)
+            | llm_formatting.bind(max_tokens=512, temperature=0, response_format={"type": "json_object"})
             | utils.TolerantJsonOutputParser()
             | RunnableLambda(cls.postprocess_premises)
         )
@@ -269,7 +268,7 @@ class RankPropsByPlausibilityChain(BaseChainBuilder):
 
         chain_rank = (
             ChatPromptTemplate.from_messages(cls._rank_prompt_msgs)
-            | llm.bind(max_tokens=512, temperature=0)
+            | llm.bind(max_tokens=512, temperature=0, response_format={"type": "json_object"})
             | utils.TolerantJsonOutputParser()
             | RunnableLambda(cls.postprocess_ranking)
         )
@@ -410,7 +409,7 @@ class GenSupportingArgumentChain(AbstractGenArgumentChain):
 
         subchain_format = (
             ChatPromptTemplate.from_messages(cls._formatting_prompt_msgs)
-            | llm_formatting.bind(max_tokens=1024, temperature=0)
+            | llm_formatting.bind(max_tokens=1024, temperature=0, response_format={"type": "json_object"})
             | utils.TolerantJsonOutputParser()
         )
 
@@ -520,7 +519,7 @@ class GenAttackingArgumentChain(AbstractGenArgumentChain):
 
         subchain_format = (
             ChatPromptTemplate.from_messages(cls._formatting_prompt_msgs)
-            | llm_formatting.bind(max_tokens=512, temperature=0)
+            | llm_formatting.bind(max_tokens=512, temperature=0, response_format={"type": "json_object"})
             | utils.TolerantJsonOutputParser()
         )
 
@@ -682,7 +681,7 @@ class SelectMostSalientChain(BaseChainBuilder):
 
         chain_select_salient = (
             ChatPromptTemplate.from_messages(cls._prompt_select_salient_msgs)
-            | llm.bind(max_tokens=512, temperature=0.1)
+            | llm.bind(max_tokens=512, temperature=0.1, response_format={"type": "json_object"})
             | utils.TolerantJsonOutputParser()
         )
 
