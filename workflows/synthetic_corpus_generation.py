@@ -1,6 +1,7 @@
 "Script for generating synthetic corpus"
 
 import asyncio
+import dotenv
 import enum
 import os
 from pathlib import Path
@@ -86,7 +87,7 @@ def init_models(**kwargs) -> tuple[ChatOpenAI, ChatOpenAI]:
     model_kwargs["api_key"] = os.getenv("SYNCIALO_API_KEY", "NONE")
     chat_model = ChatOpenAI(**model_kwargs)
     if "formatter_model_kwargs" in kwargs:
-        formatter_model_kwargs = kwargs["model_kwargs"]
+        formatter_model_kwargs = kwargs["formatter_model_kwargs"]
         formatter_model_kwargs["api_key"] = os.getenv("SYNCIALO_API_KEY2", "NONE")
         formatter_model = ChatOpenAI(**formatter_model_kwargs)
     else:
@@ -423,9 +424,12 @@ async def synthetic_corpus_generation(**kwargs):
 
 
 if __name__ == "__main__":
+
+    dotenv.load_dotenv()
+
     asyncio.run(
         synthetic_corpus_generation(
-            corpus_uid="synthetic_corpus-TEST-001",
+            corpus_uid="synthetic_corpus-TEST-002",
             universal_tags_path=_UNIVERSAL_TAGS_PATH,
             eval_tags_path=_EVAL_TAGS_PATH,
             test_tags_path=_TEST_TAGS_PATH,
@@ -440,6 +444,10 @@ if __name__ == "__main__":
             ],
             output_dir="./output",
             model_kwargs={
+                "model": "meta-llama/Llama-3.1-405B-Instruct-FP8",
+                "base_url": "https://huggingface.co/api/integrations/dgx/v1",
+            },
+            formatter_model_kwargs={
                 "model": "tgi",
                 "base_url": "http://kriton.philosophie.kit.edu:8080/v1/",
             },
