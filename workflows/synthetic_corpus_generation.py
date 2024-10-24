@@ -10,9 +10,8 @@ import yaml
 import ujson
 
 from langchain_openai import ChatOpenAI
-from loguru import logger
 import networkx as nx
-from prefect import flow, task
+from prefect import flow, get_run_logger, task
 from pydantic import BaseModel
 from syncialo.chains.debate_design import SuggestMotionChain, SuggestTopicsChain
 from syncialo.debate_builder import DebateBuilder
@@ -45,6 +44,7 @@ def check_kwargs(**kwargs):
     """
     checks if the provided kwargs are valid
     """
+    logger = get_run_logger()
     if "corpus_uid" not in kwargs:
         raise ValueError("corpus_uid is required")
     if "universal_tags_path" not in kwargs:
@@ -102,6 +102,7 @@ def create_corpus_dir(**kwargs) -> Path:
     adds split subdirectories
     returns corpus base path
     """
+    logger = get_run_logger()
     path: Path = Path(kwargs["output_dir"]) / kwargs["corpus_uid"]
     config_path = path / "config.yaml"
     if path.exists():
@@ -126,7 +127,7 @@ def add_all_debate_configs(**kwargs):
     """
     creates the debate configurations
     """
-
+    logger = get_run_logger()
     split_sizes = {
         SPLIT.TRAIN: kwargs["train_split_size"],
         SPLIT.EVAL: kwargs["eval_split_size"],
@@ -167,6 +168,8 @@ def add_all_topics(**kwargs):
     """
     adds tags and topics to the corpus' debates
     """
+    logger = get_run_logger()
+
     tags_per_cluster = kwargs["tags_per_cluster"]
 
     universal_tags = Path(kwargs["universal_tags_path"]).read_text().split("\n")
@@ -228,6 +231,8 @@ def add_all_motions(**kwargs):
     """
     adds topics and motions to the corpus' debates
     """
+    logger = get_run_logger()
+
     chat_model, formatter_model = init_models(**kwargs)
     suggest_motion_chain = SuggestMotionChain.build(chat_model, llm_formatting=formatter_model)
 
@@ -263,6 +268,8 @@ def get_missing_debates(**kwargs):
     """
     yields debate paths in the corpus for which debates haven't been generated yet
     """
+    logger = get_run_logger()
+
     for split in [SPLIT.TRAIN, SPLIT.EVAL, SPLIT.TEST]:
         if not (kwargs["path"]/split.value).exists():
             logger.info(f"Will not generate debates for split {split.value}.")
@@ -304,6 +311,8 @@ def save_debates_in_corpus(debate_paths: list[Path], debates: list[nx.DiGraph], 
     """
     adds and saves given debates to the corpus
     """
+    logger = get_run_logger()
+
     if not len(debate_paths) == len(debates):
         msg = "Internal error: Length of debate_paths and debates must be equal."
         logger.debug("Debate paths: {debate_paths}")
@@ -322,6 +331,8 @@ async def add_all_debates(**kwargs):
     """
     adds all debates to the corpus
     """
+    logger = get_run_logger()
+
     while True:
         missing_debates = get_missing_debates(**kwargs)
         debate_paths: list[Path] = [next(missing_debates, None) for _ in range(_BATCH_SIZE)]
@@ -342,6 +353,7 @@ def perform_sanity_checks(**kwargs):
     """
     performs sanity checks on the generated corpus
     """
+    logger = get_run_logger()
 
     # check for each split if all debates are generated
     debates_counter = {SPLIT.TRAIN: 0, SPLIT.EVAL: 0, SPLIT.TEST: 0}
@@ -381,7 +393,7 @@ def perform_sanity_checks(**kwargs):
                 msg = f"Invalid debate json for {str(debate_path)}: {str(e)}"
                 logger.error(msg)
                 raise ValueError(msg)
-            logger.debug(f"✅ Checks passed: {str(debate_path)}")
+            logger.info(f"✅ Checks passed: {str(debate_path)}")
 
             debates_counter[split] += 1
 
@@ -404,7 +416,8 @@ def upload_to_hf_hub(**kwargs):
     """
     uploads the debate corpus to Hugging Face Hub
     """
-    logger.warning("HF Hub upload not implemented. Skipping.")
+    logger = get_run_logger()
+    logger.critical("HF Hub upload not implemented. Skipping.")
 
 
 @flow(log_prints=True)
