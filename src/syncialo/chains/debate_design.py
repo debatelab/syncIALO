@@ -180,6 +180,10 @@ class SuggestMotionChain(BaseChainBuilder):
             return revised_motion
         return formatted_motion
 
+    @staticmethod
+    def strip_title(title: str) -> str:
+        return title.strip("'\" ")
+
     @classmethod
     def build(cls, llm: BaseChatModel, llm_formatting: BaseChatModel) -> Runnable:
 
@@ -227,7 +231,7 @@ class SuggestMotionChain(BaseChainBuilder):
             )
             | revise_if_necessary
             | RunnablePassthrough.assign(
-                title=(itemgetter("motion") | chain_titlegen)
+                title=(itemgetter("motion") | chain_titlegen | RunnableLambda(cls.strip_title))
             )
         )
 
