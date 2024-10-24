@@ -41,3 +41,9 @@ __Needs to be updated!__
    4. Let 🤖 _generate_ k `cons` against the least plausible `premise`.
    5. Add `pros` and `cons` to argument tree, and use each of these as new `target argument` that is argued for and against, unless max depth has been reached.
 
+### Usage
+
+```sh
+hatch shell
+python workflows/synthetic_corpus_generation.py
+```
