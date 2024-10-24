@@ -64,7 +64,9 @@ class DebateBuilder:
         self.chain_generate_pro_and_con = GenerateProAndConChain.build(
             model, llm_formatting=self.formatter_model
         )
-        self.chain_select_most_salient = SelectMostSalientChain.build(model)
+        self.chain_select_most_salient = SelectMostSalientChain.build(
+            model, llm_formatting=self.formatter_model
+        )
 
         # download and init persona datasets
         ds = datasets.load_dataset(**_PERSONAS_DATASET)
@@ -262,7 +264,7 @@ class DebateBuilder:
 
         for equivalent_node_uid, new_node in zip(
             await asyncio.gather(*coros_pro, *coros_con),
-            salient_pros.copy() + salient_cons.copy()
+            salient_pros.copy() + salient_cons.copy(),
         ):
             if equivalent_node_uid:
                 if new_node in salient_pros:
@@ -293,7 +295,9 @@ class DebateBuilder:
                 uid, node_id, valence=Valence.PRO.value, target_idx=new_pro.target_idx
             )
             pro_ids.append(uid)
-            self.vector_store.add_documents([Document(new_pro.claim, metadata={"uid": uid})])
+            self.vector_store.add_documents(
+                [Document(new_pro.claim, metadata={"uid": uid})]
+            )
         for new_con in salient_cons:
             uid = str(uuid.uuid4())
             tree.add_node(
@@ -305,7 +309,9 @@ class DebateBuilder:
                 uid, node_id, valence=Valence.CON.value, target_idx=new_con.target_idx
             )
             con_ids.append(uid)
-            self.vector_store.add_documents([Document(new_con.claim, metadata={"uid": uid})])
+            self.vector_store.add_documents(
+                [Document(new_con.claim, metadata={"uid": uid})]
+            )
 
         # recursion
         for pro_id in pro_ids:

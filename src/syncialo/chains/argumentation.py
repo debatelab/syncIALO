@@ -216,10 +216,10 @@ class RankPropsByPlausibilityChain(BaseChainBuilder):
                     "plausible proposition, as follows:\n"
                     '```json\n'
                     '[\n'
-                    '    {{"proposition": "<Insert most plausible proposition here.>", '
-                    '"prop_label": "<Label of this proposition>"}},\n'
-                    '    {{"proposition": "<Insert second most plausible proposition here.>", '
-                    '"prop_label": "<Label of this proposition>"}},\n'
+                    '    {{"label": "<Label of this proposition>", '
+                    '"proposition": "<Insert most plausible proposition here.>"}},\n'
+                    '    {{"label": "<Label of this proposition>", '
+                    '"proposition": "<Insert second most plausible proposition here.>"}},\n'
                     '    ...\n'
                     ']\n'
                     '```\n'
@@ -244,7 +244,10 @@ class RankPropsByPlausibilityChain(BaseChainBuilder):
 
     @staticmethod
     def postprocess_ranking(ranking: list) -> list:
-        labels = [record["prop_label"].strip("[]P ") for record in ranking if "prop_label" in record]
+        labels = [record["label"].strip("[]P ") for record in ranking if "label" in record]
+        if not labels:
+            logger.warning(f"Failed to extract 'label's from ranking: {ranking}")
+            return list(range(len(ranking)))
         int_ranking = []
         try:
             for label in labels:
@@ -258,7 +261,7 @@ class RankPropsByPlausibilityChain(BaseChainBuilder):
     # Chain builder
 
     @classmethod
-    def build(cls, llm: BaseChatModel) -> Runnable:
+    def build(cls, llm: BaseChatModel, llm_formatting: BaseChatModel) -> Runnable:
 
         chain_assess_prems = (
             ChatPromptTemplate.from_messages(cls._assess_prompt_msgs)
@@ -268,7 +271,7 @@ class RankPropsByPlausibilityChain(BaseChainBuilder):
 
         chain_rank = (
             ChatPromptTemplate.from_messages(cls._rank_prompt_msgs)
-            | llm.bind(max_tokens=512, temperature=0, response_format={"type": "json_object"})
+            | llm_formatting.bind(max_tokens=512, temperature=0, response_format={"type": "json_object"})
             | utils.TolerantJsonOutputParser()
             | RunnableLambda(cls.postprocess_ranking)
         )
@@ -563,7 +566,7 @@ class GenerateProAndConChain(BaseChainBuilder):
     @classmethod
     def build(cls, llm: BaseChatModel, llm_formatting: BaseChatModel) -> Runnable:
 
-        rank_by_plausibility = RankPropsByPlausibilityChain.build(llm)
+        rank_by_plausibility = RankPropsByPlausibilityChain.build(llm, llm_formatting)
         gen_supporting_argument = GenSupportingArgumentChain.build(llm, llm_formatting)
         gen_attacking_argument = GenAttackingArgumentChain.build(llm, llm_formatting)
 
@@ -621,8 +624,19 @@ class SelectMostSalientChain(BaseChainBuilder):
                     "which they've proposed as reasons {valence_text}:\n"
                     "[[B]] {conclusion}\n"
                     "Can you please select the {k} most salient arguments of these? Please ensure that you "
-                    "identify diverse and mutually independent arguments. Format your selection of the {k} "
-                    "arguments as follows:\n"
+                    "identify diverse and mutually independent arguments."
+                )
+             )
+        ]
+
+    _formatting_prompt_msgs = [
+            ("system", _SYSTEM_PROMPT),
+            ("user", "Please select the {k} most salient arguments from the list below.\n\n{argumentlist}"),
+            ("assistant", "{salient_args}"),
+            (
+                "user",
+                (
+                    'Please format the salient arguments you\'ve identified as follows:\n'
                     '```json\n'
                     '[\n'
                     '    {{"idx": "1", "label": "<Insert argument label here.>", '
@@ -634,7 +648,7 @@ class SelectMostSalientChain(BaseChainBuilder):
                     '```\n'
                     'Just return the JSON code.\n'
                 )
-             )
+            )
         ]
 
     # Preprocessing methods
@@ -654,9 +668,10 @@ class SelectMostSalientChain(BaseChainBuilder):
 
     @staticmethod
     def postprocess_salient_args(input_: dict) -> list[ArgumentModel]:
+        k: int = input_["k"]
         oargs: list[ArgumentModel] = input_["args"]
         salient_args: list[ArgumentModel] = []
-        for salient_arg in input_["salient_args"]:
+        for salient_arg in input_["salient_args"][:k]:
             orig_arg = next((oa for oa in oargs if oa.label == salient_arg.get("label")), None)
             if orig_arg:
                 salient_args.append(orig_arg.model_copy())
@@ -677,11 +692,17 @@ class SelectMostSalientChain(BaseChainBuilder):
     # Chain builder
 
     @classmethod
-    def build(cls, llm: BaseChatModel, **kwargs) -> Runnable:
+    def build(cls, llm: BaseChatModel, llm_formatting: BaseChatModel, **kwargs) -> Runnable:
 
-        chain_select_salient = (
+        subchain_select_salient = (
             ChatPromptTemplate.from_messages(cls._prompt_select_salient_msgs)
-            | llm.bind(max_tokens=512, temperature=0.1, response_format={"type": "json_object"})
+            | llm.bind(max_tokens=512, temperature=0.3)
+            | StrOutputParser()
+        )
+
+        subchain_format = (
+            ChatPromptTemplate.from_messages(cls._formatting_prompt_msgs)
+            | llm_formatting.bind(max_tokens=512, temperature=0, response_format={"type": "json_object"})
             | utils.TolerantJsonOutputParser()
         )
 
@@ -691,7 +712,10 @@ class SelectMostSalientChain(BaseChainBuilder):
                 argumentlist=(itemgetter("args") | RunnableLambda(cls.format_args))
             )
             | RunnablePassthrough().assign(
-                salient_args=chain_select_salient
+                salient_args=subchain_select_salient
+            )
+            | RunnablePassthrough().assign(
+                salient_args=subchain_format
             )
             | RunnableLambda(cls.postprocess_salient_args)
         )
