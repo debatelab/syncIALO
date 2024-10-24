@@ -7,12 +7,7 @@ from loguru import logger
 from pydantic import BaseModel
 import tenacity
 
-
-_API_URL = os.getenv(
-    "SYNCIALO_CLASSIFIER_URL",
-    "https://api-inference.huggingface.co/models/MoritzLaurer/deberta-v3-large-zeroshot-v2.0",
-)
-_HEADERS = {"Authorization": f"Bearer {os.getenv('HUGGINGFACEHUB_API_TOKEN')}"}
+_DEFAULT_API_URL = "https://api-inference.huggingface.co/models/MoritzLaurer/deberta-v3-large-zeroshot-v2.0"
 
 
 class ClassificationResult(BaseModel):
@@ -22,8 +17,13 @@ class ClassificationResult(BaseModel):
 
 
 async def _aquery(payload):
+    api_url = os.getenv(
+        "SYNCIALO_CLASSIFIER_URL",
+        _DEFAULT_API_URL,
+    )
+    headers = {"Authorization": f"Bearer {os.getenv('HUGGINGFACEHUB_API_TOKEN')}"}
     async with aiohttp.ClientSession() as session:
-        async with session.post(_API_URL, headers=_HEADERS, json=payload) as response:
+        async with session.post(api_url, headers=headers, json=payload) as response:
             return await response.json()
 
 
