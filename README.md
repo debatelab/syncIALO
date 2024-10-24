@@ -43,6 +43,8 @@ __Needs to be updated!__
 
 ### Usage
 
+Configure `workflows/synthetic_corpus_generation.py`. Then:
+
 ```sh
 hatch shell
 python workflows/synthetic_corpus_generation.py
