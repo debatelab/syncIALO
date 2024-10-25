@@ -388,8 +388,10 @@ class GenSupportingArgumentChain(AbstractGenArgumentChain):
 
     @staticmethod
     def set_target_idx(ranking: list[int]) -> int:
-        # TODO: ❓  Discuss whether it makes sense to target but the most plausible premise
-        return ranking[0]
+        weights = [2**i for i in range(len(ranking))]
+        weights = reversed(weights)
+        target_idx = random.choices(ranking, weights=weights, k=1)[0]
+        return target_idx
 
     # Postprocessing methods
 
@@ -498,8 +500,9 @@ class GenAttackingArgumentChain(AbstractGenArgumentChain):
 
     @staticmethod
     def set_target_idx(ranking: list[int]) -> int:
-        # TODO: ❓ Discuss whether it makes sense to target but the most implausible premise
-        return ranking[-1]
+        weights = [2**i for i in range(len(ranking))]
+        target_idx = random.choices(ranking, weights=weights, k=1)[0]
+        return target_idx
 
     # Postprocessing methods
 
@@ -673,6 +676,8 @@ class SelectMostSalientChain(BaseChainBuilder):
         salient_args: list[ArgumentModel] = []
         for salient_arg in input_["salient_args"][:k]:
             orig_arg = next((oa for oa in oargs if oa.label == salient_arg.get("label")), None)
+            if not orig_arg:  # try to identify by claim
+                orig_arg = next((oa for oa in oargs if oa.claim == salient_arg.get("claim")), None)
             if orig_arg:
                 salient_args.append(orig_arg.model_copy())
             else:
