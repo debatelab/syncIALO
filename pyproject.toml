@@ -25,6 +25,7 @@ classifiers = [
   "Programming Language :: Python :: Implementation :: PyPy",
 ]
 dependencies = [
+  "commentjson",
   "datasets",
   "faiss-cpu",
   "langchain>=0.3,<0.4",
