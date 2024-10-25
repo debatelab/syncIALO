@@ -30,6 +30,7 @@ dependencies = [
   "langchain-huggingface>=0.1,<0.2",
   "langchain-openai>=0.2,<0.3",
   "loguru",
+  "networkx<3.5",
   "prefect",
   "python-dotenv",
   "pyyaml",
