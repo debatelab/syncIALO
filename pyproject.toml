@@ -46,13 +46,15 @@ Source = "https://github.com/unknown/syncialo"
 path = "src/syncialo/__about__.py"
 
 [tool.hatch.envs.default]
-python = "3.12"
 dependencies = [
   "coverage[toml]>=6.5",
   "pytest",
   "black",
   "Flake8-pyproject",
 ]
+[tool.hatch.envs.deploy]
+python = "3.12"
+dependencies = []
 [tool.hatch.envs.default.scripts]
 test = "pytest {args:tests}"
 test-cov = "coverage run -m pytest {args:tests}"
