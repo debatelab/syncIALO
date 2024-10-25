@@ -7,7 +7,7 @@ name = "syncialo"
 dynamic = ["version"]
 description = 'Synthetic drop-in replacements for _Kialo_ debate datasets '
 readme = "README.md"
-requires-python = ">=3.8"
+requires-python = ">=3.11"
 license = "MIT"
 keywords = []
 authors = [
