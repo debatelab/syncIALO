@@ -54,7 +54,9 @@ dependencies = [
 ]
 [tool.hatch.envs.deploy]
 python = "3.12"
-dependencies = []
+dependencies = [
+  "prefect<3",
+]
 [tool.hatch.envs.default.scripts]
 test = "pytest {args:tests}"
 test-cov = "coverage run -m pytest {args:tests}"
