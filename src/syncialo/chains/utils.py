@@ -4,6 +4,8 @@ from typing import Any
 import re
 from json import JSONDecodeError
 
+import commentjson
+
 from langchain_core.exceptions import OutputParserException
 from langchain_core.output_parsers.json import JsonOutputParser, parse_json_markdown
 from langchain_core.outputs import Generation
@@ -45,10 +47,16 @@ class TolerantJsonOutputParser(JsonOutputParser):
             try:
                 return parse_json_markdown(text)
             except JSONDecodeError:
-                return None
+                try:
+                    return commentjson.loads(text)
+                except ValueError:
+                    return None
         else:
             try:
                 return parse_json_markdown(text)
             except JSONDecodeError as e:
-                msg = f"Invalid json output: {text}"
-                raise OutputParserException(msg, llm_output=text) from e
+                try:
+                    return commentjson.loads(text)
+                except ValueError as e2:
+                    msg = f"Invalid json output: {text}. Error: {e}. Error: {e2}"
+                    raise OutputParserException(msg, llm_output=text) from e
