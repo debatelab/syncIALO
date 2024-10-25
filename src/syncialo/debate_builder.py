@@ -31,7 +31,8 @@ _PERSONAS_DATASET = dict(
 )
 _TAGS_PER_CLUSTER = 8
 _TOP_K_RETRIEVAL = 3
-_EMBEDDINGS_MODEL = "sentence-transformers/all-MiniLM-l6-v2"
+_DEFAULT_EMBEDDINGS_MODEL = "sentence-transformers/all-MiniLM-L6-v2"
+_DEFAUL_EMBEDDINGS_URL = "https://api-inference.huggingface.co/models/sentence-transformers/all-MiniLM-L6-v2"
 
 
 class DebateBuilder:
@@ -78,7 +79,9 @@ class DebateBuilder:
     def init_vector_store(self, root_claim: str, root_id: str):
         logger.debug("Initializing vector store for duplicate detection.")
         embeddings = HuggingFaceInferenceAPIEmbeddings(
-            api_key=os.getenv("HUGGINGFACEHUB_API_TOKEN"), model_name=_EMBEDDINGS_MODEL
+            api_key=os.getenv("HUGGINGFACEHUB_API_TOKEN"),
+            model_name=os.getenv("SYNCIALO_EMBEDDINGS_MODEL", _DEFAULT_EMBEDDINGS_MODEL),
+            api_url=os.getenv("SYNCIALO_EMBEDDINGS_URL", _DEFAUL_EMBEDDINGS_URL),
         )
         documents = [Document(root_claim, metadata={"uid": root_id})]
         self.vector_store = FAISS.from_documents(
@@ -366,8 +369,6 @@ class DebateBuilder:
             tags=tag_cluster,
             topic=topic,
         )
-
-        # TODO: Check for duplicate labels and revise/specify labels if necessary
 
         return tree
 
