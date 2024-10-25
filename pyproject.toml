@@ -46,6 +46,7 @@ Source = "https://github.com/unknown/syncialo"
 path = "src/syncialo/__about__.py"
 
 [tool.hatch.envs.default]
+python = "3.12"
 dependencies = [
   "coverage[toml]>=6.5",
   "pytest",
