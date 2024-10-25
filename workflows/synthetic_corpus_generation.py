@@ -442,7 +442,7 @@ if __name__ == "__main__":
 
     asyncio.run(
         synthetic_corpus_generation(
-            corpus_uid="synthetic_corpus-TEST-003",
+            corpus_uid="synthetic_corpus-TEST-004",
             universal_tags_path=_UNIVERSAL_TAGS_PATH,
             eval_tags_path=_EVAL_TAGS_PATH,
             test_tags_path=_TEST_TAGS_PATH,
@@ -452,11 +452,11 @@ if __name__ == "__main__":
             eval_split_size=0,
             test_split_size=0,
             degree_configs=[
-                [6, 6, 1, 0],
-                [5, 5, 2, 0],
-                [3, 2, 2, 1, 1, 0],
-                # [2, 1, 0],
-                # [1, 2, 0],
+                # [6, 6, 1, 0],
+                # [5, 5, 2, 0],
+                # [3, 2, 2, 1, 1, 0],
+                [2, 1, 0],
+                [1, 2, 0],
             ],
             output_dir="./output",
             model_kwargs={
