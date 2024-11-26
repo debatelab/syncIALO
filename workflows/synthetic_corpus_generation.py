@@ -442,7 +442,7 @@ if __name__ == "__main__":
 
     asyncio.run(
         synthetic_corpus_generation(
-            corpus_uid="synthetic_corpus-TEST-004",
+            corpus_uid="synthetic_corpus-TEST-005",
             universal_tags_path=_UNIVERSAL_TAGS_PATH,
             eval_tags_path=_EVAL_TAGS_PATH,
             test_tags_path=_TEST_TAGS_PATH,
@@ -464,8 +464,8 @@ if __name__ == "__main__":
                 "base_url": "https://huggingface.co/api/integrations/dgx/v1",
             },
             formatter_model_kwargs={
-                "model": "tgi",
-                "base_url": "http://kriton.philosophie.kit.edu:8080/v1/",
+                "model": "meta-llama/Llama-3.1-8B-Instruct",
+                "base_url": "https://huggingface.co/api/integrations/dgx/v1",
             },
         )
     )
