@@ -22,6 +22,7 @@ classifiers = [
   "Programming Language :: Python :: Implementation :: PyPy",
 ]
 dependencies = [
+  "aiofiles",
   "commentjson",
   "datasets",
   "faiss-cpu",

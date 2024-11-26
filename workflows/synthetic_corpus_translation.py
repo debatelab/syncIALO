@@ -1,5 +1,6 @@
 "Script for generating synthetic corpus"
 
+import aiofiles
 import argparse
 import asyncio
 import json
@@ -165,7 +166,7 @@ def get_missing_debates(**kwargs):
                 yield debate_path
 
 
-async def translate_single_debate(debate_path: Path, **kwargs) -> nx.DiGraph:
+async def translate_single_debate(debate_path: Path, **kwargs) -> nx.DiGraph | None:
     """
     translates a debate
     """
@@ -173,11 +174,14 @@ async def translate_single_debate(debate_path: Path, **kwargs) -> nx.DiGraph:
     if not debate_file_path.exists():
         msg = f"Debate file missing: {str(debate_file_path)}"
         logger.error(msg)
-        raise ValueError(msg)
-    source_argmap = nx.node_link_graph(json.loads(debate_file_path.read_text()))
-    translated_argmap = translate_argmap(source_argmap, **kwargs)
-    return translated_argmap
+        raise FileNotFoundError(msg)
 
+    async with aiofiles.open(debate_file_path, mode='r') as f:
+        content = await f.read()
+    
+    source_argmap = nx.node_link_graph(json.loads(content))
+    translated_argmap = await translate_argmap(source_argmap, **kwargs)
+    return translated_argmap
 
 def save_debates_in_corpus(
     debate_paths: list[Path], debates: list[nx.DiGraph | Exception], **kwargs
@@ -226,9 +230,10 @@ async def translate_all_debates(**kwargs):
             translate_single_debate(debate_path=debate_path, **kwargs)
             for debate_path in debate_paths
         ]
+        translated_debates = await asyncio.gather(*coros, return_exceptions=True)
         save_debates_in_corpus(
             debate_paths=debate_paths,
-            debates=await asyncio.gather(*coros, return_exceptions=True),
+            debates=translated_debates,
             **kwargs
         )
 
