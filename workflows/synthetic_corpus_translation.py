@@ -55,7 +55,7 @@ def parse_args():
     parser.add_argument(
         "--model",
         type=str,
-        default="mistralai/Mixtral-8x7B-Instruct-v0.1",
+        default="VAGOsolutions/Llama-3.1-SauerkrautLM-70b-Instruct",
         help="Model to use for translation",
     )
     parser.add_argument(

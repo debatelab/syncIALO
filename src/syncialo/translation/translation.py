@@ -7,7 +7,6 @@ import networkx as nx
 from pydantic import BaseModel
 import tenacity
 
-from syncialo.chains.argumentation import Valence
 
 
 class Language(enum.Enum):
@@ -29,117 +28,185 @@ class _ClaimModel(BaseModel):
 class _PremisesModel(BaseModel):
     premises: list[str]
 
-
-
 _PROMPT_TRANSLATION_ROOT = (
-        #"I'm translating a debate from English to {lang}. "
-        "Can you please translate to {lang}: 'f{original_claim}'. "
-        #"Just answer by providing your {lang} translation, using the same JSON format, with 'claim' and 'label'. "
-        #"Make sure to provide a {lang} claim, even if it starts with a word that works in English, too."
+        "Task: Translate to {lang}: {original_claim}\n"
+        "Just answer by providing a translataion. Make sure that "
+        "your translation is really in {lang}, especially if "
+        "it starts with words that work in English, too."
     )
 
-
 _PROMPT_TRANSLATION_REASON = (
-        "I ask you to assist me in translating a debate from English to {lang}. "
-        "Previously, I have translated: "
-        "'f{original_parent}' as 'f{translated_parent}'.\n"
-        "Can you please translate the next "
-        "claim, which {phis} the previous one mentioned above, to {lang}: 'f{original_claim}'. "
-        "Stick to the json format without translating the keys. "
-        "Make sure to provide a {lang} claim, even if it starts with a word that works in English, too."
+        "Task: Translate to {lang}: {original_claim}\n"
+        "Just answer by providing a translataion. Make sure that "
+        "your translation is really in {lang}, especially if "
+        "it starts with words that work in English, too."
 )
 
 _PROMPT_TRANSLATION_PREMISES = (
-        "I ask you to assist me in translating a debate from English to {lang}. "
-        "I have translated the the gist of an argument: "
+        "Task: Translate to {lang}.\n\n"
+        "I ask you to assist me in translating an argument from English to {lang}. "
+        "We already have a translation of the argument's gist: "
         "'f{original_claim}' as 'f{translated_claim}'.\n"
-        "Next, I need to translate the argument's premises. "
-        "Can you please help me and translate the following list of sentences, "
-        "all of which are premises of the argument: "
-        "'f{original_premises}'. "
-        "Provide your translations as a list of {lang} sentences, "
-        "sticking to the json format (without translating the keys). "
-        "Make sure to provide {lang} premises, even if they start with a word that works in English, too."
+        "Please translate the following list of sentences, "
+        "all of which are premises of the initially mentioned argument, to {lang}: "
+        "{original_premises}\n"
+        "Make sure that your translations are really in {lang}."
 )
+
+_PROMPT_TRANSLATION_FORMAT = (
+        "Task: Render {lang} translation in JSON format.\n"
+        "Original item: {original_item}\n"
+        "Translation: {free_translation}\n"
+        "Please render the {lang} translation of the original item in JSON "
+        "format, using the same schema as the original item."
+    )
+
 
 
 @tenacity.retry(wait=tenacity.wait_random_exponential(multiplier=1, max=60))
 async def _translate_root(node_data: dict, target_language: Language, client: AsyncInferenceClient) -> dict:
-    logger.debug(f"Translating root node {node_data}")
-    claim = _ClaimModel(claim=node_data["claim"], label=node_data["label"])
-    prompt = _PROMPT_TRANSLATION_ROOT.format(lang=target_language.value, original_claim=claim.model_dump_json())
+
+    try:
+        claim = _ClaimModel(claim=node_data["claim"], label=node_data["label"])
+        original_claim = claim.model_dump_json()
+        prompt = _PROMPT_TRANSLATION_ROOT.format(lang=target_language.value, original_claim=original_claim)
+    except Exception as e:
+        logger.error(f"Failed to prepare node {node_data} due to {e}")
+        raise e
     try:
         resp = await client.text_generation(
             prompt=prompt,
-            max_new_tokens=250,
+            max_new_tokens=512,
             temperature=0.4,
-            seed=42,
-            grammar={"type": "json", "value": _ClaimModel.model_json_schema()},
         )
     except Exception as e:
         logger.error(f"Failed to translate node {node_data} due to {e}")
         raise e
+
+    prompt = _PROMPT_TRANSLATION_FORMAT.format(
+        lang=target_language.value,
+        original_item=original_claim,
+        free_translation=resp,
+    )
+    try:
+        resp = await client.text_generation(
+            prompt=prompt,
+            max_new_tokens=256,
+            temperature=0.3,
+            grammar={"type": "json", "value": _ClaimModel.model_json_schema()},
+        )
+    except Exception as e:
+        logger.error(f"Failed to format node {node_data} due to {e}")
+        raise e
+
     try:
         node_data = node_data.copy()
         node_data.update(json.loads(resp))
     except Exception as e:
         logger.error(f"Failed to update node {node_data} with {resp} due to {e}")
         raise e
-    logger.debug(f"Translation: {node_data}")
+    
+    logger.debug(f"Translation: {str(node_data)[:100]}...")
     return node_data
 
 
 @tenacity.retry(wait=tenacity.wait_random_exponential(multiplier=1, max=60))
 async def _translate_reason(
     node_data: dict,
-    translated_parent: dict,
-    original_parent: dict,
-    valence: Valence,
     target_language: Language,
     client: AsyncInferenceClient,
 ) -> dict:
-    #logger.debug(f"Translating reason node {node_data}")
-    original_claim = _ClaimModel(claim=node_data["claim"], label=node_data["label"])
-    translated_parent_claim = _ClaimModel(claim=translated_parent["claim"], label=translated_parent["label"])
-    original_parent_claim = _ClaimModel(claim=original_parent["claim"], label=original_parent["label"])
-    phis = "supports" if valence == Valence.PRO else "attacks"
-    prompt = _PROMPT_TRANSLATION_REASON.format(
-        lang=target_language.value,
-        original_parent=original_parent_claim.model_dump_json(),
-        translated_parent=translated_parent_claim.model_dump_json(),
-        phis=phis,
-        original_claim=original_claim.model_dump_json(),
-    )
-    resp = await client.text_generation(
-        prompt=prompt,
-        max_new_tokens=256,
-        temperature=0.4,
-        seed=42,
-        grammar={"type": "json", "value": _ClaimModel.model_json_schema()},
-    )
-    translated_node_data = json.loads(resp)
-    node_data = node_data.copy()
-    node_data.update(translated_node_data)
+    
+    claim = _ClaimModel(claim=node_data["claim"], label=node_data["label"])
+    original_claim = claim.model_dump_json()
 
-    if "premises" in node_data and node_data["premises"]:
-        translated_claim = _ClaimModel(**translated_node_data)
-        original_premises = _PremisesModel(premises=node_data["premises"])
-        prompt = _PROMPT_TRANSLATION_PREMISES.format(
+    try:
+        prompt = _PROMPT_TRANSLATION_REASON.format(
             lang=target_language.value,
-            original_claim=original_claim.model_dump_json(),
-            translated_claim=translated_claim.model_dump_json(),
-            original_premises=original_premises.model_dump_json(),
+            original_claim=original_claim,
         )
         resp = await client.text_generation(
             prompt=prompt,
             max_new_tokens=512,
             temperature=0.4,
-            seed=42,
-            grammar={"type": "json", "value": _PremisesModel.model_json_schema()},
         )
-        node_data.update(json.loads(resp))
+    except Exception as e:
+        logger.error(f"Failed to translate claim gist and label {node_data} due to {e}")
+        raise e
 
-    logger.debug(f"Translation: {node_data}")
+    try:
+        prompt = _PROMPT_TRANSLATION_FORMAT.format(
+            lang=target_language.value,
+            original_item=original_claim,
+            free_translation=resp,
+        )
+        resp = await client.text_generation(
+            prompt=prompt,
+            max_new_tokens=256,
+            temperature=0.3,
+            grammar={"type": "json", "value": _ClaimModel.model_json_schema()},
+        )
+    except Exception as e:
+        logger.error(f"Failed to format claim gist and label {node_data} given {resp} due to {e}")
+        raise e
+
+    try:    
+        translated_node_data = json.loads(resp)
+        node_data = node_data.copy()
+        node_data.update(translated_node_data)
+    except Exception as e:
+        logger.error(f"Failed to update node {node_data} with {resp} due to {e}")
+        raise e
+
+
+    if "premises" in node_data and node_data["premises"]:
+        try:
+            translated_claim = _ClaimModel(**translated_node_data)
+            original_premises = _PremisesModel(premises=node_data["premises"])
+            prompt = _PROMPT_TRANSLATION_PREMISES.format(
+                lang=target_language.value,
+                original_claim=original_claim,
+                translated_claim=translated_claim.model_dump_json(),
+                original_premises="\n* ".join(original_premises.premises),
+            )
+            resp = await client.text_generation(
+                prompt=prompt,
+                max_new_tokens=512,
+                temperature=0.6,
+            )
+        except Exception as e:
+            logger.error(f"Failed to translate premises {node_data} due to {e}")
+            raise e
+        try:
+            prompt = _PROMPT_TRANSLATION_FORMAT.format(
+                lang=target_language.value,
+                original_item=original_premises.model_dump_json(),
+                free_translation=resp,
+                schema=_PremisesModel.model_json_schema()
+            )
+            resp = await client.text_generation(
+                prompt=prompt,
+                max_new_tokens=512,
+                temperature=0.3,
+                grammar={"type": "json", "value": _PremisesModel.model_json_schema()},
+            )
+        except Exception as e:
+            logger.error(f"Failed to format premises {node_data} given {resp} due to {e}")
+            raise e
+        try:
+            node_data.update(json.loads(resp))
+            # Make sure that premise list length is preserved!
+            if not node_data["premises"]:
+                node_data["premises"] = original_premises.premises
+            elif len(node_data["premises"]) < len(original_premises.premises):
+                node_data["premises"] += node_data["premises"][-1] * (len(original_premises.premises) - len(node_data["premises"]))
+            elif len(node_data["premises"]) > len(original_premises.premises):
+                node_data["premises"] = node_data["premises"][:len(original_premises.premises)]
+        except Exception as e:
+            logger.error(f"Failed to update premises node {node_data} with {resp} due to {e}")
+            raise e
+        logger.debug(f"Translation: {str(node_data)[:100]}...")
+
     return node_data
 
 
@@ -173,14 +240,8 @@ async def translate_argmap(source_argmap: nx.DiGraph, **kwargs):
         if parent is None:
             translated_node_data = await _translate_root(original_node_data, target_language, client=client)
         else:
-            valence = Valence(
-                target_argmap.edges[node, parent]["valence"]
-            )
             translated_node_data = await _translate_reason(
                 original_node_data,
-                translated_parent_data,
-                original_parent_data,
-                valence,
                 target_language,
                 client=client,
             )
