@@ -324,6 +324,8 @@ async def main():
             target_corpus_uid=target_corpus_uid,
             **vars(args),
         )
+    if args.failed_to_complete_flag:      
+        Path(args.failed_to_complete_flag).unlink(missing_ok=True)
 
 
 if __name__ == "__main__":
