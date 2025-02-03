@@ -26,7 +26,7 @@ That's why the `DebateLab` team has built this python module for creating synthe
 | synthetic_corpus-001-DE |Llama-3.1-SauerkrautLM-70b-Instruct³|1000/50/50¹|560k/28k/28k¹|[HF hub→](https://huggingface.co/datasets/DebateLabKIT/syncialo-raw/viewer/synthetic_corpus-001-DE)|DebateLab|
 
 ¹ per train / eval / test split  
-² ❤️ generously supported by 🤗 HuggingFace  
+² with ❤️ generous support from 🤗 HuggingFace  
 ³ as translator
 
 
