@@ -12,7 +12,7 @@ That's why the `DebateLab` team has built this python module for creating synthe
 
 ### Features
 
-- permissive CC license
+- permissive ODC license
 - reproducible and extendable
 - open source code basis
 - works with open LLMs
