@@ -1,4 +1,4 @@
-<div align=center>
+<div align="center">
 
 # syncIAL🍏
 
@@ -276,7 +276,7 @@ Let me show you a randomly sampled subgraph from a syncIALO debate in the train 
 
 ## What can I do with it?
 
-Raw syncIALO is great for "distilling" more specific datatsets.
+Raw syncIALO is great for "distilling" more specific datasets.
 
 * You can use syncIALO to build **datasets for pretraining, SFT, DPO or RLVR**.
 * You can create **challenging benchmarks** to probe reasoning skills of LLMs.
@@ -310,7 +310,7 @@ Similarly, you can distill DPO data:
 |Here's a list of statements ... Reconstruct these as an argument map!|Argument map|Shuffled argument map|
 |...|...|...|
 
-If you instruct the LLM to generate argument maps in parsable format (like yaml, mermaid or Argdown), you have sheer infite possibilities to verify solutions and create RLVR data:
+If you instruct the LLM to generate argument maps in parsable format (like yaml, mermaid or Argdown), you have sheer infinite possibilities to verify solutions and create RLVR data:
 
 |Prompt|Reward|
 |---|---|
@@ -325,14 +325,14 @@ Moreover, multiple choice tasks can be easily created like so:
 |Prompt|Options|
 |---|---|
 |Consider this argument map ... What is x (SOME_GRAPH_PROPERTY)? | x=a, x=b ... |
-|Here's a list of statements ... Which map adequately captures the argumenation?| a) argument map, b) shuffled map ... |
+|Here's a list of statements ... Which map adequately captures the argumentation?| a) argument map, b) shuffled map ... |
 |...|...|
 
 This is cool for improving CoT / reasoning quality with RL and verifiable rewards, and of course for benchmarking LLMs.
 
 But syncIALO can help during **inference**, too. Suppose you want your model to reconstruct a given text as a –– say: Argdown –– argument map of a certain size. If the model struggles, you can create diverse few-shot examples tailored to the problem at hand _ad nauseam_, and thus guide the model.  
 
-Personas datasets are helpful for increasing the diversity in synthetic datasets, for broad solution space exploration during inference, and for calibrating agentic AI systems. syncIALO can play a similiar role and complement existing personas datasets: For example, one may additionally charactierize a persona through a stance they adopt in a debate, or an argument they have put forth, endorsed or criticized. 
+Personas datasets are helpful for increasing the diversity in synthetic datasets, for broad solution space exploration during inference, and for calibrating agentic AI systems. syncIALO can play a similar role and complement existing personas datasets: For example, one may additionally characterize a persona through a stance they adopt in a debate, or an argument they have put forth, endorsed or criticized. 
 
 So, syncIALO is really multi-purpose. Let's explore together what you can do with it!
 
@@ -373,7 +373,7 @@ That has been a further motivation for creating the syncIALO corpora, which may 
 
 syncIALO has been conceived and built by the DebateLab Team at KIT. You find us at [HuggingFace](https://huggingface.co/DebateLabKIT) and [GitHub](https://github.com/debatelab), or can follow [our blog](https://debatelab.github.io/).
 
-**🤗 Hugging Face has sponsored the syncIALO project through inference time / compute credits. 🙏 We gratefully acknowledge the genereous support. 🫶**
+**🤗 Hugging Face has sponsored the syncIALO project through inference time / compute credits. 🙏 We gratefully acknowledge the generous support. 🫶**
 
 
 ## How can I get involved?
