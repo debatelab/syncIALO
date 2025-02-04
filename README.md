@@ -1,4 +1,10 @@
+<div align="center">
+
 # syncIALO 🤖🗯️
+
+[blog post]() | [syncialo-raw dataset](https://huggingface.co/datasets/DebateLabKIT/syncialo-raw)
+
+</div>
 
 ### What is this?
 
